@@ -18,6 +18,7 @@ characters by their rendered height.
 from __future__ import annotations
 
 import ctypes
+import subprocess
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -54,6 +55,24 @@ class Page:
                     continue
             rows.append([word])
         return [sorted(row, key=lambda w: w['x0']) for row in rows]
+
+    def phrases(self, gap_ratio: float = 0.5) -> List[dict]:
+        """Words on a line joined into phrases: a gap under gap_ratio of the text height keeps the phrase going (with
+        a space), a wider one ends it, which separates a statement's columns."""
+        phrases: List[dict] = []
+        for row in self.lines(1.0):
+            current = None
+            for word in row:
+                height = max(word['bottom'] - word['top'], 1.0)
+                if current is not None and word['x0'] - current['x1'] < gap_ratio * height:
+                    current['text'] += ' ' + word['text']
+                    current['x1'] = max(current['x1'], word['x1'])
+                    current['top'] = min(current['top'], word['top'])
+                    current['bottom'] = max(current['bottom'], word['bottom'])
+                else:
+                    current = dict(word)
+                    phrases.append(current)
+        return phrases
 
     def text(self, tolerance: Optional[float] = None) -> str:
         return '\n'.join(' '.join(w['text'] for w in row) for row in self.lines(tolerance))
@@ -175,3 +194,16 @@ def read_pages(pdf_path: Path) -> Tuple[Page, ...]:
     """Every page's words, read once per file version and shared by every reader that asks."""
     path = Path(pdf_path)
     return _read(str(path.resolve()), path.stat().st_mtime)
+
+
+@lru_cache(maxsize=4)
+def _layout(path: str, mtime: float) -> str:
+    return subprocess.run(['pdftotext', '-layout', path, '-'], capture_output=True, text=True, check=True,
+                          timeout=120).stdout
+
+
+def layout_text(pdf_path: Path) -> str:
+    """The page laid out as text by poppler's pdftotext, whose spacing the text parsers are built on. Run once per
+    file version and shared by every reader that asks; raises if pdftotext is missing or fails."""
+    path = Path(pdf_path)
+    return _layout(str(path.resolve()), path.stat().st_mtime)

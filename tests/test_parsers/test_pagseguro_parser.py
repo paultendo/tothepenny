@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from statement_reconciler.config import get_bank_config_loader
-from statement_reconciler.parsers import pagseguro_parser
+from statement_reconciler.extractors import page_reader
 from statement_reconciler.parsers.pagseguro_parser import PagSeguroParser
 
 
@@ -18,19 +18,8 @@ class _DummyPage:
     def __init__(self, text: str):
         self._text = text
 
-    def extract_text(self):
+    def text(self):
         return self._text
-
-
-class _DummyPDF:
-    def __init__(self, pages):
-        self.pages = pages
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
 
 
 @pytest.fixture(scope="module")
@@ -55,16 +44,12 @@ def test_pagseguro_backfills_daily_balance_and_multiline_description(monkeypatch
 
     dummy_pages = [_DummyPage(sample_text)]
 
-    def _dummy_open(_path):
-        return _DummyPDF(dummy_pages)
-
-    monkeypatch.setattr(pagseguro_parser, "HAS_PDFPLUMBER", True)
-    monkeypatch.setattr(pagseguro_parser.pdfplumber, "open", _dummy_open)
+    monkeypatch.setattr(page_reader, "read_pages", lambda _path: dummy_pages)
 
     parser = PagSeguroParser(pagseguro_config)
     parser._pdf_path = Path("dummy.pdf")
 
-    transactions = parser._parse_with_pdfplumber(
+    transactions = parser._parse_pages(
         datetime(2025, 3, 1),
         datetime(2025, 8, 14)
     )

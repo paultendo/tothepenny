@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import itertools
 import re
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -58,7 +57,8 @@ def _money(value: str) -> float:
 
 
 def layout_text(pdf_path: Path) -> str:
-    return subprocess.run(['pdftotext', '-layout', str(pdf_path), '-'], capture_output=True, text=True, timeout=120).stdout
+    from ..extractors.page_reader import layout_text as shared_layout_text
+    return shared_layout_text(pdf_path)
 
 
 def read_chain(text: str) -> ChainResult:

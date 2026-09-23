@@ -26,11 +26,6 @@ from datetime import datetime
 from typing import Optional, List
 from pathlib import Path
 
-try:
-    import pdfplumber
-    HAS_PDFPLUMBER = True
-except ImportError:
-    HAS_PDFPLUMBER = False
 
 from .base_parser import BaseTransactionParser
 from ..models import Transaction
@@ -42,7 +37,7 @@ logger = logging.getLogger(__name__)
 class PagSeguroParser(BaseTransactionParser):
     """Parser for PagSeguro bank statements.
 
-    Uses pdfplumber for text extraction and pattern-based parsing.
+    Reads each page's text and parses it by pattern.
     """
 
     # Class variable to store PDF path (set by pipeline before parsing)
@@ -55,7 +50,7 @@ class PagSeguroParser(BaseTransactionParser):
         statement_end_date: Optional[datetime]
     ) -> List[Transaction]:
         """
-        Parse PagSeguro statement using pdfplumber text extraction.
+        Parse a PagSeguro statement from its page text.
 
         PagSeguro format:
         - Data column (date)
@@ -71,10 +66,6 @@ class PagSeguroParser(BaseTransactionParser):
         Returns:
             List of Transaction objects
         """
-        if not HAS_PDFPLUMBER:
-            logger.error("pdfplumber is required for PagSeguro parsing but not installed")
-            return []
-
         if not self._pdf_path:
             logger.error(f"PDF path not set: {self._pdf_path}")
             return []
@@ -83,17 +74,17 @@ class PagSeguroParser(BaseTransactionParser):
             logger.error(f"PDF file not found: {self._pdf_path}")
             return []
 
-        logger.info(f"Using pdfplumber text extraction for PagSeguro statement")
+        logger.info("Reading the PagSeguro statement's page text")
 
-        return self._parse_with_pdfplumber(statement_start_date, statement_end_date)
+        return self._parse_pages(statement_start_date, statement_end_date)
 
-    def _parse_with_pdfplumber(
+    def _parse_pages(
         self,
         statement_start_date: Optional[datetime],
         statement_end_date: Optional[datetime]
     ) -> List[Transaction]:
         """
-        Parse PagSeguro statement using pdfplumber text extraction.
+        Parse a PagSeguro statement from its page text.
 
         Returns:
             List of Transaction objects
@@ -120,161 +111,161 @@ class PagSeguroParser(BaseTransactionParser):
             pending_date = None
 
         try:
-            with pdfplumber.open(self._pdf_path) as pdf:
-                for page_num, page in enumerate(pdf.pages, 1):
-                    # Extract text from page
-                    text = page.extract_text()
+            from ..extractors.page_reader import read_pages
+            for page_num, page in enumerate(read_pages(Path(self._pdf_path)), 1):
+                # Extract text from page
+                text = page.text()
 
-                    if not text:
+                if not text:
+                    continue
+
+                # Split into lines
+                lines = text.split('\n')
+                pending_description = None
+
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # Skip header/metadata lines
+                    # Note: Use specific patterns to avoid false matches
+                    # E.g., "Conta 12345678-9" (account number) vs "Cartão da Conta" (debit card)
+                    skip_patterns = [
+                        'PagSeguro Internet',
+                        'Agência',
+                        'CPF:',
+                        'Extrato da conta',
+                        'Emitido em:',
+                        'Periodo:',
+                        'Data Descrição Valor'
+                    ]
+
+                    # Check for "Conta" only at start of line (account number metadata)
+                    if any(skip in line for skip in skip_patterns):
+                        continue
+                    if line.strip().startswith('Conta '):
                         continue
 
-                    # Split into lines
-                    lines = text.split('\n')
-                    pending_description = None
+                    # Check if it's a balance line
+                    if 'Saldo do dia' in line:
+                        balance_match = re.match(
+                            r'^(\d{2}/\d{2}/\d{4})\s+Saldo do dia\s+R\$\s*([\d.,]+)',
+                            line
+                        )
+                        if balance_match:
+                            balance_date = parse_date(balance_match.group(1), self.config.date_formats)
+                            current_balance = self._parse_brazilian_number(balance_match.group(2))
+                            logger.debug(f"Balance update: R${current_balance:,.2f}")
 
-                    for line in lines:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        # Skip header/metadata lines
-                        # Note: Use specific patterns to avoid false matches
-                        # E.g., "Conta 12345678-9" (account number) vs "Cartão da Conta" (debit card)
-                        skip_patterns = [
-                            'PagSeguro Internet',
-                            'Agência',
-                            'CPF:',
-                            'Extrato da conta',
-                            'Emitido em:',
-                            'Periodo:',
-                            'Data Descrição Valor'
-                        ]
-
-                        # Check for "Conta" only at start of line (account number metadata)
-                        if any(skip in line for skip in skip_patterns):
-                            continue
-                        if line.strip().startswith('Conta '):
-                            continue
-
-                        # Check if it's a balance line
-                        if 'Saldo do dia' in line:
-                            balance_match = re.match(
-                                r'^(\d{2}/\d{2}/\d{4})\s+Saldo do dia\s+R\$\s*([\d.,]+)',
-                                line
-                            )
-                            if balance_match:
-                                balance_date = parse_date(balance_match.group(1), self.config.date_formats)
-                                current_balance = self._parse_brazilian_number(balance_match.group(2))
-                                logger.debug(f"Balance update: R${current_balance:,.2f}")
-
-                                if pending_transactions and balance_date and pending_date == balance_date:
-                                    flush_pending(current_balance)
-                                else:
-                                    if pending_transactions:
-                                        logger.warning(
-                                            "PagSeguro: missing daily balance for %s; leaving %d transaction(s) without balances",
-                                            pending_date.date() if pending_date else "unknown date",
-                                            len(pending_transactions)
-                                        )
-                                        flush_pending(None)
-                                    if balance_date:
-                                        transactions.append(
-                                            Transaction(
-                                                date=balance_date,
-                                                description="SALDO DO DIA",
-                                                money_in=0.0,
-                                                money_out=0.0,
-                                                balance=current_balance,
-                                                transaction_type=None,
-                                                confidence=100.0,
-                                                raw_text=line[:120],
-                                                date_source="line"
-                                            )
-                                        )
-                                pending_description = None
-                            continue
-
-                        # Parse transaction line
-                        # Format: DD/MM/YYYY Description -R$ amount or R$ amount
-                        date_match = re.match(r'^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(-?R\$\s*[\d.,]+)$', line)
-
-                        date_str = None
-                        description = None
-                        amount_str = None
-
-                        if date_match:
-                            date_str = date_match.group(1)
-                            description = date_match.group(2).strip()
-                            amount_str = date_match.group(3)
-                        else:
-                            date_only_match = re.match(r'^(\d{2}/\d{2}/\d{4})\s+(-?R\$\s*[\d.,]+)$', line)
-                            if date_only_match and pending_description:
-                                date_str = date_only_match.group(1)
-                                description = pending_description.strip()
-                                amount_str = date_only_match.group(2)
+                            if pending_transactions and balance_date and pending_date == balance_date:
+                                flush_pending(current_balance)
                             else:
-                                date_desc_match = re.match(r'^(\d{2}/\d{2}/\d{4})\s+(.+)$', line)
-                                if date_desc_match:
-                                    desc_part = date_desc_match.group(2).strip()
-                                    if desc_part:
-                                        pending_description = (
-                                            f"{pending_description} {desc_part}".strip()
-                                            if pending_description else desc_part
+                                if pending_transactions:
+                                    logger.warning(
+                                        "PagSeguro: missing daily balance for %s; leaving %d transaction(s) without balances",
+                                        pending_date.date() if pending_date else "unknown date",
+                                        len(pending_transactions)
+                                    )
+                                    flush_pending(None)
+                                if balance_date:
+                                    transactions.append(
+                                        Transaction(
+                                            date=balance_date,
+                                            description="SALDO DO DIA",
+                                            money_in=0.0,
+                                            money_out=0.0,
+                                            balance=current_balance,
+                                            transaction_type=None,
+                                            confidence=100.0,
+                                            raw_text=line[:120],
+                                            date_source="line"
                                         )
-                                    continue
+                                    )
+                            pending_description = None
+                        continue
 
-                                if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and re.search(r'[A-Za-z]', line):
-                                    pending_description = f"{pending_description} {line}".strip() if pending_description else line
+                    # Parse transaction line
+                    # Format: DD/MM/YYYY Description -R$ amount or R$ amount
+                    date_match = re.match(r'^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(-?R\$\s*[\d.,]+)$', line)
+
+                    date_str = None
+                    description = None
+                    amount_str = None
+
+                    if date_match:
+                        date_str = date_match.group(1)
+                        description = date_match.group(2).strip()
+                        amount_str = date_match.group(3)
+                    else:
+                        date_only_match = re.match(r'^(\d{2}/\d{2}/\d{4})\s+(-?R\$\s*[\d.,]+)$', line)
+                        if date_only_match and pending_description:
+                            date_str = date_only_match.group(1)
+                            description = pending_description.strip()
+                            amount_str = date_only_match.group(2)
+                        else:
+                            date_desc_match = re.match(r'^(\d{2}/\d{2}/\d{4})\s+(.+)$', line)
+                            if date_desc_match:
+                                desc_part = date_desc_match.group(2).strip()
+                                if desc_part:
+                                    pending_description = (
+                                        f"{pending_description} {desc_part}".strip()
+                                        if pending_description else desc_part
+                                    )
                                 continue
 
-                        # Parse date
-                        transaction_date = parse_date(date_str, self.config.date_formats)
-                        if not transaction_date:
-                            if looks_like_date(date_str):
-                                logger.warning(f"Could not parse date: {date_str}")
-                            else:
-                                logger.debug("Skipping non-date token during PagSeguro parse: %s", date_str)
+                            if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and re.search(r'[A-Za-z]', line):
+                                pending_description = f"{pending_description} {line}".strip() if pending_description else line
                             continue
 
-                        if pending_date and transaction_date != pending_date:
-                            logger.warning(
-                                "PagSeguro: daily balance not found before date change (%s → %s); leaving %d transaction(s) without balances",
-                                pending_date.date(),
-                                transaction_date.date(),
-                                len(pending_transactions)
-                            )
-                            flush_pending(None)
-
-                        # Parse amount
-                        amount = self._parse_brazilian_number(amount_str.replace('R$', '').strip())
-
-                        # Determine if money in or out
-                        if '-' in amount_str:
-                            money_out = abs(amount)
-                            money_in = 0.0
+                    # Parse date
+                    transaction_date = parse_date(date_str, self.config.date_formats)
+                    if not transaction_date:
+                        if looks_like_date(date_str):
+                            logger.warning(f"Could not parse date: {date_str}")
                         else:
-                            money_in = amount
-                            money_out = 0.0
+                            logger.debug("Skipping non-date token during PagSeguro parse: %s", date_str)
+                        continue
 
-                        # Translate description to English
-                        translated_description = self._translate_description(description)
-
-                        # Create transaction
-                        transaction = Transaction(
-                            date=transaction_date,
-                            description=description,
-                            description_translated=translated_description,
-                            money_in=money_in,
-                            money_out=money_out,
-                            balance=None,
-                            confidence=self._calculate_confidence(
-                                transaction_date, description, money_in, money_out, None
-                            )
+                    if pending_date and transaction_date != pending_date:
+                        logger.warning(
+                            "PagSeguro: daily balance not found before date change (%s → %s); leaving %d transaction(s) without balances",
+                            pending_date.date(),
+                            transaction_date.date(),
+                            len(pending_transactions)
                         )
+                        flush_pending(None)
 
-                        pending_description = None
-                        pending_transactions.append(transaction)
-                        pending_date = transaction_date
-                        transactions.append(transaction)
+                    # Parse amount
+                    amount = self._parse_brazilian_number(amount_str.replace('R$', '').strip())
+
+                    # Determine if money in or out
+                    if '-' in amount_str:
+                        money_out = abs(amount)
+                        money_in = 0.0
+                    else:
+                        money_in = amount
+                        money_out = 0.0
+
+                    # Translate description to English
+                    translated_description = self._translate_description(description)
+
+                    # Create transaction
+                    transaction = Transaction(
+                        date=transaction_date,
+                        description=description,
+                        description_translated=translated_description,
+                        money_in=money_in,
+                        money_out=money_out,
+                        balance=None,
+                        confidence=self._calculate_confidence(
+                            transaction_date, description, money_in, money_out, None
+                        )
+                    )
+
+                    pending_description = None
+                    pending_transactions.append(transaction)
+                    pending_date = transaction_date
+                    transactions.append(transaction)
 
             if pending_transactions:
                 logger.warning(
@@ -285,12 +276,12 @@ class PagSeguroParser(BaseTransactionParser):
                 flush_pending(None)
 
         except Exception as e:
-            logger.error(f"Error parsing PagSeguro PDF with pdfplumber: {e}")
+            logger.error(f"Error parsing PagSeguro PDF: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return []
 
-        logger.info(f"Parsed {len(transactions)} PagSeguro transactions using pdfplumber")
+        logger.info(f"Parsed {len(transactions)} PagSeguro transactions")
         return transactions
 
     def _parse_brazilian_number(self, number_str: str) -> float:

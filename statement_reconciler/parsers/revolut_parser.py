@@ -17,7 +17,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-import pdfplumber
+from ..extractors.page_reader import read_pages
 
 from ..models import ExtractionResult, Statement, Transaction
 from ..validators.balance_validator import BalanceValidator
@@ -55,9 +55,8 @@ class RevolutParser:
     @staticmethod
     def _lines(page):
         # Phrases, not single words: spaces stay inside a phrase and a gap wider than half the text size ends it, which
-        # separates the statement's columns. pdfplumber (MIT) does this natively.
-        words = page.extract_words(keep_blank_chars=True, x_tolerance_ratio=0.5, use_text_flow=False)
-        lines = [Line(w["text"].strip(), w["x0"], w["top"], w["x1"], w["bottom"]) for w in words if w["text"].strip()]
+        # separates the statement's columns.
+        lines = [Line(w["text"].strip(), w["x0"], w["top"], w["x1"], w["bottom"]) for w in page.phrases(0.5) if w["text"].strip()]
         return sorted(lines, key=lambda line: (round(line.y0, 1), line.x0))
 
     @staticmethod
@@ -152,161 +151,162 @@ class RevolutParser:
 
     def parse_pdf(self, file_path: Path) -> ExtractionResult:
         try:
-            pdf = pdfplumber.open(file_path)
+            pages = read_pages(file_path)
         except Exception as exc:  # encrypted or unreadable
             raise ValueError(f"Revolut PDF cannot be opened: {exc}") from exc
-        with pdf:
-            first = self._lines(pdf.pages[0])
-            if not any(line.text == "GBP Statement" for line in first):
-                raise ValueError("This Revolut parser supports native GBP account statements only")
-            controls, total = self._summary(first)
-            transactions, excluded, coverage, issues = [], [], [], []
-            current_account = None
-            completed_account = None
-            period = None
-            reverted = False
-            seen_accounts = set()
-            for page_number, page in enumerate(pdf.pages, 1):
-                lines = self._lines(page)
-                footer = min([line.y0 for line in lines if line.text.startswith(("Report lost or stolen card", "Your Retail current account", "©"))] or [page.height]) - 1
-                events = []
-                for line in lines:
-                    section = self.SECTION.fullmatch(line.text)
-                    undo = self.REVERTED.fullmatch(line.text)
-                    if section:
-                        events.append((line.y0, "section", section))
-                    elif undo:
-                        events.append((line.y0, "reverted", undo))
-                    elif line.text in ("Date", "Start date"):
-                        events.append((line.y0, "header", line))
-                events.sort(key=lambda event: event[0])
-                page_count = excluded_count = anchor_count = 0
-                used_money = set()
-                table_start = None
-                for i, (y, kind, value) in enumerate(events):
-                    if kind in ("section", "reverted"):
-                        date_values = value.groups()[-2:]
-                        this_period = tuple(self._date(date) for date in date_values)
-                        if period is None:
-                            period = this_period
-                        if period != this_period or this_period[0] > this_period[1]:
-                            raise ValueError(f"Inconsistent Revolut section period on page {page_number}")
-                        if kind == "section":
-                            current_account = self._account(value.group(1), controls)
-                            completed_account = current_account
-                            seen_accounts.add(current_account)
-                            reverted = False
-                        else:
-                            if completed_account is None:
-                                raise ValueError("Reverted entries have no preceding account")
-                            current_account = completed_account
-                            reverted = True
-                        continue
-                    header = self._headers(lines, value)
-                    if current_account is None or period is None:
-                        raise ValueError(f"Table has no account section on page {page_number}")
-                    if ("balance" in header) == reverted:
-                        raise ValueError(f"Unexpected balance column for Revolut table on page {page_number}")
-                    stop = min(events[i + 1][0] if i + 1 < len(events) else footer, footer)
-                    if table_start is None:
-                        table_start = y
-                    table_lines = [line for line in lines if y + 1 < line.y0 < stop]
-                    date_right = (header["date"].x1 + header["description"].x0) / 2
-                    anchors = [line for line in table_lines if line.x0 < date_right and self.DATE.fullmatch(line.text)]
-                    # Date-like text in the date column is never silently discarded.
-                    malformed = [line for line in table_lines if line.x0 < date_right and re.match(r"^\d", line.text) and not self.DATE.fullmatch(line.text)]
-                    if malformed:
-                        raise ValueError(f"Unrecognized transaction date on page {page_number}: {malformed[0].text}")
-                    for n, anchor in enumerate(anchors):
-                        anchor_count += 1
-                        end = anchors[n + 1].y0 if n + 1 < len(anchors) else stop
-                        same = self._same_row(table_lines, anchor.y0)
-                        money = {}
-                        amount_headers = {key: header[key] for key in ("money out", "money in", "balance") if key in header}
-                        for line in same:
-                            if not self.MONEY.fullmatch(line.text):
-                                continue
-                            center = (line.x0 + line.x1) / 2
-                            key = min(amount_headers, key=lambda key: abs(center - (amount_headers[key].x0 + amount_headers[key].x1) / 2))
-                            if key in money:
-                                raise ValueError(f"Duplicate amount column on page {page_number}")
-                            money[key] = self._pence(line.text)
-                            used_money.add(line)
-                        if len(set(money) & {"money in", "money out"}) != 1 or (not reverted and "balance" not in money):
-                            raise ValueError(f"Incomplete transaction amounts on page {page_number} at {anchor.text}")
-                        desc_min = header["description"].x0 - 1
-                        desc_max = header["money out"].x0 - 1
-                        desc = [line.text for line in same if desc_min <= line.x0 < desc_max and not self.MONEY.fullmatch(line.text)]
-                        detail_lines = [line.text for line in table_lines if anchor.y0 + 1 < line.y0 < end - 0.1 and desc_min <= line.x0 < desc_max]
-                        continuation_money = [line for line in table_lines
-                                              if anchor.y0 + 1 < line.y0 < end - 0.1
-                                              and self.MONEY.fullmatch(line.text)]
-                        for amount in continuation_money:
-                            fee_lines = [line for line in table_lines
-                                         if abs(line.y0 - amount.y0) < 1
-                                         and line.text.startswith('Fee:')]
-                            if len(fee_lines) != 1:
-                                raise ValueError(f"Unexplained amount within transaction on page {page_number}")
-                            fee = re.fullmatch(r'Fee:\s*(£[\d,]+\.\d{2})', fee_lines[0].text)
-                            gross = money.get('money out', money.get('money in'))
-                            if fee is None or self._pence(amount.text) + self._pence(fee.group(1)) != gross:
-                                raise ValueError(f"Fee breakdown does not match transaction amount on page {page_number}")
-                            detail_lines.append(f"Amount before fee: {amount.text}")
-                            used_money.add(amount)
-                        if not desc:
-                            raise ValueError(f"Missing Revolut description on page {page_number}")
-                        date = self._date(anchor.text)
-                        if not period[0] <= date <= period[1]:
-                            raise ValueError(f"Transaction outside statement period on page {page_number}")
-                        txn = Transaction(date=date, description=" ".join(desc), details=" | ".join(detail_lines),
-                                          money_in=money.get("money in", 0) / 100, money_out=money.get("money out", 0) / 100,
-                                          balance=money["balance"] / 100 if "balance" in money else None,
-                                          page_number=page_number, currency="GBP", date_source="statement",
-                                          account_name=current_account, status="Reverted" if reverted else "Completed")
-                        if reverted:
-                            excluded.append(txn)
-                            excluded_count += 1
-                        else:
-                            transactions.append(txn)
-                            page_count += 1
-                if table_start is not None:
-                    unassigned = [line for line in lines if table_start < line.y0 < footer and self.MONEY.fullmatch(line.text) and line not in used_money]
-                    if unassigned:
-                        raise ValueError(f"Unassigned monetary row on page {page_number}: {unassigned[0].text}")
-                coverage.append({"page": page_number, "date_anchors": anchor_count, "completed_rows": page_count, "reverted_rows": excluded_count})
-            for control in controls:
-                account = control["account_name"]
-                txns = [txn for txn in transactions if txn.account_name == account]
-                if account not in seen_accounts:
-                    raise ValueError(f"Account from balance summary has no parsed section: {account}")
-                current = control["opening_balance"]
-                differences = []
-                for txn in txns:
-                    current += self._pence(txn.money_in) - self._pence(txn.money_out)
-                    diff = self._pence(txn.balance) - current
-                    if diff:
-                        differences.append({"page": txn.page_number, "date": txn.date.isoformat()[:10], "difference": diff / 100})
-                actual_in = sum(self._pence(txn.money_in) for txn in txns)
-                actual_out = sum(self._pence(txn.money_out) for txn in txns)
-                matched = actual_in == control["money_in"] and actual_out == control["money_out"] and current == control["closing_balance"] and not differences
-                if not matched:
-                    issues.append(f"{account}: extracted totals or running balances do not match the statement")
-                if txns:
-                    validation = BalanceValidator(tolerance=0.0001).validate_transactions(txns, control["opening_balance"] / 100)
-                    if not validation.success and matched:
-                        issues.append(f"{account}: {validation.message}")
-                if any(b.date < a.date for a, b in zip(txns, txns[1:])):
-                    issues.append(f"{account}: transaction dates are not chronological")
-                control.update(transaction_count=len(txns), extracted_money_in=actual_in / 100, extracted_money_out=actual_out / 100,
-                               calculated_closing=current / 100, balance_mismatches=differences, reconciled=matched,
-                               first_page=min((txn.page_number for txn in txns), default=None), last_page=max((txn.page_number for txn in txns), default=None))
-                for key in ("opening_balance", "money_out", "money_in", "closing_balance"):
-                    control[key] /= 100
-            statement = self._metadata(first, controls, total, period)
-            result = ExtractionResult(statement=statement, transactions=transactions, success=not issues,
-                                      balance_reconciled=not issues, confidence_score=100.0 if not issues else 0.0,
-                                      extraction_method="native_pdf_revolut", warnings=issues,
-                                      error_message="; ".join(issues) if issues else None,
-                                      account_summaries=controls, excluded_transactions=excluded, page_coverage=coverage,
-                                      source_file=Path(file_path).name, source_sha256=hashlib.sha256(Path(file_path).read_bytes()).hexdigest())
-            return result
+        if not pages:
+            raise ValueError("Revolut PDF has no pages")
+        first = self._lines(pages[0])
+        if not any(line.text == "GBP Statement" for line in first):
+            raise ValueError("This Revolut parser supports native GBP account statements only")
+        controls, total = self._summary(first)
+        transactions, excluded, coverage, issues = [], [], [], []
+        current_account = None
+        completed_account = None
+        period = None
+        reverted = False
+        seen_accounts = set()
+        for page_number, page in enumerate(pages, 1):
+            lines = self._lines(page)
+            footer = min([line.y0 for line in lines if line.text.startswith(("Report lost or stolen card", "Your Retail current account", "©"))] or [page.height]) - 1
+            events = []
+            for line in lines:
+                section = self.SECTION.fullmatch(line.text)
+                undo = self.REVERTED.fullmatch(line.text)
+                if section:
+                    events.append((line.y0, "section", section))
+                elif undo:
+                    events.append((line.y0, "reverted", undo))
+                elif line.text in ("Date", "Start date"):
+                    events.append((line.y0, "header", line))
+            events.sort(key=lambda event: event[0])
+            page_count = excluded_count = anchor_count = 0
+            used_money = set()
+            table_start = None
+            for i, (y, kind, value) in enumerate(events):
+                if kind in ("section", "reverted"):
+                    date_values = value.groups()[-2:]
+                    this_period = tuple(self._date(date) for date in date_values)
+                    if period is None:
+                        period = this_period
+                    if period != this_period or this_period[0] > this_period[1]:
+                        raise ValueError(f"Inconsistent Revolut section period on page {page_number}")
+                    if kind == "section":
+                        current_account = self._account(value.group(1), controls)
+                        completed_account = current_account
+                        seen_accounts.add(current_account)
+                        reverted = False
+                    else:
+                        if completed_account is None:
+                            raise ValueError("Reverted entries have no preceding account")
+                        current_account = completed_account
+                        reverted = True
+                    continue
+                header = self._headers(lines, value)
+                if current_account is None or period is None:
+                    raise ValueError(f"Table has no account section on page {page_number}")
+                if ("balance" in header) == reverted:
+                    raise ValueError(f"Unexpected balance column for Revolut table on page {page_number}")
+                stop = min(events[i + 1][0] if i + 1 < len(events) else footer, footer)
+                if table_start is None:
+                    table_start = y
+                table_lines = [line for line in lines if y + 1 < line.y0 < stop]
+                date_right = (header["date"].x1 + header["description"].x0) / 2
+                anchors = [line for line in table_lines if line.x0 < date_right and self.DATE.fullmatch(line.text)]
+                # Date-like text in the date column is never silently discarded.
+                malformed = [line for line in table_lines if line.x0 < date_right and re.match(r"^\d", line.text) and not self.DATE.fullmatch(line.text)]
+                if malformed:
+                    raise ValueError(f"Unrecognized transaction date on page {page_number}: {malformed[0].text}")
+                for n, anchor in enumerate(anchors):
+                    anchor_count += 1
+                    end = anchors[n + 1].y0 if n + 1 < len(anchors) else stop
+                    same = self._same_row(table_lines, anchor.y0)
+                    money = {}
+                    amount_headers = {key: header[key] for key in ("money out", "money in", "balance") if key in header}
+                    for line in same:
+                        if not self.MONEY.fullmatch(line.text):
+                            continue
+                        center = (line.x0 + line.x1) / 2
+                        key = min(amount_headers, key=lambda key: abs(center - (amount_headers[key].x0 + amount_headers[key].x1) / 2))
+                        if key in money:
+                            raise ValueError(f"Duplicate amount column on page {page_number}")
+                        money[key] = self._pence(line.text)
+                        used_money.add(line)
+                    if len(set(money) & {"money in", "money out"}) != 1 or (not reverted and "balance" not in money):
+                        raise ValueError(f"Incomplete transaction amounts on page {page_number} at {anchor.text}")
+                    desc_min = header["description"].x0 - 1
+                    desc_max = header["money out"].x0 - 1
+                    desc = [line.text for line in same if desc_min <= line.x0 < desc_max and not self.MONEY.fullmatch(line.text)]
+                    detail_lines = [line.text for line in table_lines if anchor.y0 + 1 < line.y0 < end - 0.1 and desc_min <= line.x0 < desc_max]
+                    continuation_money = [line for line in table_lines
+                                          if anchor.y0 + 1 < line.y0 < end - 0.1
+                                          and self.MONEY.fullmatch(line.text)]
+                    for amount in continuation_money:
+                        fee_lines = [line for line in table_lines
+                                     if abs(line.y0 - amount.y0) < 1
+                                     and line.text.startswith('Fee:')]
+                        if len(fee_lines) != 1:
+                            raise ValueError(f"Unexplained amount within transaction on page {page_number}")
+                        fee = re.fullmatch(r'Fee:\s*(£[\d,]+\.\d{2})', fee_lines[0].text)
+                        gross = money.get('money out', money.get('money in'))
+                        if fee is None or self._pence(amount.text) + self._pence(fee.group(1)) != gross:
+                            raise ValueError(f"Fee breakdown does not match transaction amount on page {page_number}")
+                        detail_lines.append(f"Amount before fee: {amount.text}")
+                        used_money.add(amount)
+                    if not desc:
+                        raise ValueError(f"Missing Revolut description on page {page_number}")
+                    date = self._date(anchor.text)
+                    if not period[0] <= date <= period[1]:
+                        raise ValueError(f"Transaction outside statement period on page {page_number}")
+                    txn = Transaction(date=date, description=" ".join(desc), details=" | ".join(detail_lines),
+                                      money_in=money.get("money in", 0) / 100, money_out=money.get("money out", 0) / 100,
+                                      balance=money["balance"] / 100 if "balance" in money else None,
+                                      page_number=page_number, currency="GBP", date_source="statement",
+                                      account_name=current_account, status="Reverted" if reverted else "Completed")
+                    if reverted:
+                        excluded.append(txn)
+                        excluded_count += 1
+                    else:
+                        transactions.append(txn)
+                        page_count += 1
+            if table_start is not None:
+                unassigned = [line for line in lines if table_start < line.y0 < footer and self.MONEY.fullmatch(line.text) and line not in used_money]
+                if unassigned:
+                    raise ValueError(f"Unassigned monetary row on page {page_number}: {unassigned[0].text}")
+            coverage.append({"page": page_number, "date_anchors": anchor_count, "completed_rows": page_count, "reverted_rows": excluded_count})
+        for control in controls:
+            account = control["account_name"]
+            txns = [txn for txn in transactions if txn.account_name == account]
+            if account not in seen_accounts:
+                raise ValueError(f"Account from balance summary has no parsed section: {account}")
+            current = control["opening_balance"]
+            differences = []
+            for txn in txns:
+                current += self._pence(txn.money_in) - self._pence(txn.money_out)
+                diff = self._pence(txn.balance) - current
+                if diff:
+                    differences.append({"page": txn.page_number, "date": txn.date.isoformat()[:10], "difference": diff / 100})
+            actual_in = sum(self._pence(txn.money_in) for txn in txns)
+            actual_out = sum(self._pence(txn.money_out) for txn in txns)
+            matched = actual_in == control["money_in"] and actual_out == control["money_out"] and current == control["closing_balance"] and not differences
+            if not matched:
+                issues.append(f"{account}: extracted totals or running balances do not match the statement")
+            if txns:
+                validation = BalanceValidator(tolerance=0.0001).validate_transactions(txns, control["opening_balance"] / 100)
+                if not validation.success and matched:
+                    issues.append(f"{account}: {validation.message}")
+            if any(b.date < a.date for a, b in zip(txns, txns[1:])):
+                issues.append(f"{account}: transaction dates are not chronological")
+            control.update(transaction_count=len(txns), extracted_money_in=actual_in / 100, extracted_money_out=actual_out / 100,
+                           calculated_closing=current / 100, balance_mismatches=differences, reconciled=matched,
+                           first_page=min((txn.page_number for txn in txns), default=None), last_page=max((txn.page_number for txn in txns), default=None))
+            for key in ("opening_balance", "money_out", "money_in", "closing_balance"):
+                control[key] /= 100
+        statement = self._metadata(first, controls, total, period)
+        result = ExtractionResult(statement=statement, transactions=transactions, success=not issues,
+                                  balance_reconciled=not issues, confidence_score=100.0 if not issues else 0.0,
+                                  extraction_method="native_pdf_revolut", warnings=issues,
+                                  error_message="; ".join(issues) if issues else None,
+                                  account_summaries=controls, excluded_transactions=excluded, page_coverage=coverage,
+                                  source_file=Path(file_path).name, source_sha256=hashlib.sha256(Path(file_path).read_bytes()).hexdigest())
+        return result

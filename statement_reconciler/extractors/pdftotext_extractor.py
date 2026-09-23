@@ -62,15 +62,8 @@ class PDFToTextExtractor(BaseExtractor):
         try:
             # Run pdftotext with -layout flag to preserve formatting
             # This preserves column positions while keeping text together
-            result = subprocess.run(
-                ['pdftotext', '-layout', str(file_path), '-'],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=60
-            )
-
-            text = result.stdout
+            from .page_reader import layout_text
+            text = layout_text(file_path)  # read once per file and shared with the layout readers
 
             if not text or len(text.strip()) < 50:
                 logger.warning(f"pdftotext produced little/no text: {len(text)} chars")
