@@ -32,6 +32,10 @@ OPENING_RE = re.compile(r'\b(start balance|balance brought forward|brought forwa
 CLOSING_RE = re.compile(r'\b(balance carried forward|carried forward|end balance|closing balance)\b', re.I)
 HEADER_RE = re.compile(r'\bbalance\b', re.I)
 TOTALS_RE = re.compile(r'\btotal(s)?\b', re.I)
+# The summary of an accessible statement: "Balance on 01 January 2024 ... £794.45" (opening), then the closing date.
+BALANCE_ON_RE = re.compile(r'\bbalance on\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}\b', re.I)
+# Accessible (screen-reader) layouts repeat column labels and mark empty cells; those lines carry no content.
+LABEL_ONLY_RE = re.compile(r'^(?:\s|\.|column|date|description|type|money in \(£\)|money out \(£\)|balance \(£\)|blank\.?)*$', re.I)
 MONTHS = {m: i for i, m in enumerate(['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'], 1)}
 
 
@@ -84,6 +88,10 @@ def read_running_balance(text: str) -> RunningBalanceResult:
     pending: List[str] = []
     unchecked: List[Row] = []
     flipped = 0
+    summary_closing: Optional[float] = None
+    summary_in: Optional[float] = None
+    summary_out: Optional[float] = None
+    block_direction: Optional[str] = None
 
     def settle(printed: float) -> Optional[str]:
         # The entries since the last printed balance must move it to this one.
@@ -109,7 +117,27 @@ def read_running_balance(text: str) -> RunningBalanceResult:
     for line in text.split('\n'):
         if not line.strip():
             continue
-        if HEADER_RE.search(line) and re.search(r'\b(date)\b', line, re.I) and re.search(r'\b(money|paid|out|in|debit|credit|payments?)\b', line, re.I):
+        # An accessible statement names each block's column outright: "Money Out (£)  Balance (£)".
+        block = re.search(r'money\s+(in|out)\s+\(£\)\s+balance\s+\(£\)', line, re.I)
+        if block:
+            block_direction = block.group(1).lower()
+            continue
+        is_heading = bool(HEADER_RE.search(line) and re.search(r'\b(date)\b', line, re.I) and re.search(r'\b(money|paid|out|in|debit|credit|payments?)\b', line, re.I))
+        if LABEL_ONLY_RE.match(line) and not (is_heading and table_right is None):
+            continue
+        if BALANCE_ON_RE.search(line) and not rows:
+            figures = AMOUNT_RE.findall(line)
+            if figures and re.search(r'\bmoney in\b', line, re.I):
+                summary_in = _money(figures[0])
+            elif figures and re.search(r'\bmoney out\b', line, re.I):
+                summary_out = _money(figures[0])
+            if figures:
+                if opening is None:
+                    opening = balance = _money(figures[-1])
+                else:
+                    summary_closing = _money(figures[-1])
+            continue
+        if is_heading:
             # A table heading: the balance column's right edge bounds the table on this page.
             # The table's own Balance heading is the first one after the money columns; a side panel on the same line
             # ("Start balance", "End balance") must not move the table's edge.
@@ -123,7 +151,8 @@ def read_running_balance(text: str) -> RunningBalanceResult:
             out_head = re.search(r'(money|paid|payments?)\s+out|\bdebits?\b|\bwithdrawals?\b', line, re.I)
             in_head = re.search(r'(money|paid)\s+in|\bcredits?\b|\breceipts?\b|\bdeposits?\b', line, re.I)
             columns = ((out_head.start() + out_head.end()) / 2, (in_head.start() + in_head.end()) / 2) if out_head and in_head else None
-            money_left = (out_head.start() - 6) if out_head else 0
+            heads_left = [h.start() for h in (out_head, in_head) if h]
+            money_left = (min(heads_left) - 6) if heads_left else 0
             pending = []
             continue
         if table_right is None:
@@ -174,6 +203,20 @@ def read_running_balance(text: str) -> RunningBalanceResult:
             amount = abs(_money(amounts[-2][0]))
             new_balance = _money(amounts[-1][0])
             row = Row(date_text, pending + ([words] if words else []), amount, column_of(amounts[-2][1], amounts[-2][0]) or '', new_balance)
+            if block_direction and not unchecked:
+                # The block's own heading gives the direction; its printed balance must follow from the last one.
+                signed = amount if block_direction == 'in' else -amount
+                if not rows:
+                    balance = round(new_balance - signed, 2)  # the balance before the first entry, worked back
+                    opening = balance
+                if abs(round(new_balance - balance, 2) - signed) > 0.005:
+                    return RunningBalanceResult(rows, opening, closing, False, f'line "{words[:40]}" moves the balance by {round(new_balance - balance, 2):.2f}, not {signed:.2f}')
+                row.direction = block_direction
+                rows.append(row)
+                balance = new_balance
+                block_direction = None
+                pending = []
+                continue
             if not unchecked:
                 delta = round(new_balance - balance, 2)
                 if abs(abs(delta) - amount) > 0.005:
@@ -209,6 +252,14 @@ def read_running_balance(text: str) -> RunningBalanceResult:
         return RunningBalanceResult(rows, opening, closing, False, 'no opening balance or no transactions')
     if unchecked:
         return RunningBalanceResult(rows, opening, closing, False, 'entries after the last printed balance cannot be checked')
+    if summary_in is not None and abs(round(sum(r.amount for r in rows if r.direction == 'in'), 2) - summary_in) > 0.005:
+        return RunningBalanceResult(rows, opening, closing, False, f'money in does not match the summary {summary_in:.2f}')
+    if summary_out is not None and abs(round(sum(r.amount for r in rows if r.direction == 'out'), 2) - summary_out) > 0.005:
+        return RunningBalanceResult(rows, opening, closing, False, f'money out does not match the summary {summary_out:.2f}')
+    if summary_closing is not None:
+        if abs(summary_closing - balance) > 0.005:
+            return RunningBalanceResult(rows, opening, closing, False, f'final balance {balance:.2f} does not match the summary {summary_closing:.2f}')
+        closing = closing if closing is not None else summary_closing
     return RunningBalanceResult(rows, opening, closing, True, flipped=flipped)
 
 
