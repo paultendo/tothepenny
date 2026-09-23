@@ -160,7 +160,9 @@ class NationwideParser(BaseTransactionParser):
                 idx += 1
                 continue
 
-            if self._should_skip_row(row_lower):
+            # A row carrying an amount in the table's money columns is a transaction line, never panel text: the
+            # side panel is already cut away by position, so only amount-free rows can be skipped as info text.
+            if self._should_skip_row(row_lower) and not self._extract_amounts_from_words(row['words'], metrics)['has_amount']:
                 idx += 1
                 continue
 
@@ -187,6 +189,20 @@ class NationwideParser(BaseTransactionParser):
                 idx += 1
                 continue
 
+            # A row whose only figure is in the balance column is not a transaction. Either it carries the balance of
+            # the transaction above it (printed on that transaction's last description line), or it is a checkpoint,
+            # such as a page's carried-forward balance beside a bare year. Booking it as money out broke the chain.
+            if amount_data['money_in'] is None and amount_data['money_out'] is None and amount_data['balance'] is not None:
+                label = (desc_fragment or '').strip()
+                if transactions and transactions[-1].balance is None and label and not re.fullmatch(r'\d{4}', label):
+                    transactions[-1].balance = amount_data['balance']
+                    transactions[-1].description = self._normalize_spaces(f"{transactions[-1].description} {label}")
+                else:
+                    pending_period_balance = amount_data['balance']
+                desc_lines = []
+                idx += 1
+                continue
+
             description_parts = list(desc_lines)
             consumed_rows = 0
             peek_idx = idx + 1
@@ -201,12 +217,12 @@ class NationwideParser(BaseTransactionParser):
                     break
                 if self._looks_like_period_break(next_lower):
                     break
-                if self._should_skip_row(next_lower):
-                    peek_idx += 1
-                    continue
                 next_amounts = self._extract_amounts_from_words(next_row['words'], metrics)
                 if next_amounts['has_amount']:
                     break
+                if self._should_skip_row(next_lower):
+                    peek_idx += 1
+                    continue
                 next_desc = self._extract_description_fragment(next_row['words'], metrics)
                 if not next_desc:
                     break
@@ -224,9 +240,8 @@ class NationwideParser(BaseTransactionParser):
             primary_amount = amount_data['primary']
 
             desc_compact = description.lower().replace(' ', '')
-            if money_in == 0.0 and money_out > 0 and any(keyword in desc_compact for keyword in credit_keywords):
-                money_in = money_out
-                money_out = 0.0
+            # The column the amount sits in says which way the money went. A keyword in the description ("Direct debit
+            # CREDITSPRING", "Credit card payment") must never overturn it.
 
             if money_in == 0.0 and money_out == 0.0 and primary_amount is not None:
                 if any(keyword in desc_compact for keyword in credit_keywords):
@@ -374,7 +389,7 @@ class NationwideParser(BaseTransactionParser):
                 idx += 1
                 continue
 
-            if any(keyword in line_lower for keyword in self.INFO_BOX_KEYWORDS):
+            if self._has_info_keyword(line_lower):
                 has_amounts = bool(amount_pattern.search(line))
                 has_date = bool(re.match(r'^\s*\d{1,2}\s+[A-Z][a-z]{2}', line_for_date))
                 if not has_date and (not has_amounts or not pending_desc_lines):
@@ -480,9 +495,8 @@ class NationwideParser(BaseTransactionParser):
                 "cashback",
                 "refund"
             ]
-            if money_in == 0.0 and money_out > 0 and any(keyword in desc_compact for keyword in credit_keywords):
-                money_in = money_out
-                money_out = 0.0
+            # The column the amount sits in says which way the money went. A keyword in the description ("Direct debit
+            # CREDITSPRING", "Credit card payment") must never overturn it.
 
             if money_in == 0.0 and money_out == 0.0:
                 primary_amount = parse_currency(amounts_with_pos[0][0]) or 0.0
@@ -659,6 +673,11 @@ class NationwideParser(BaseTransactionParser):
             'balance' in row_lower
         )
 
+    @classmethod
+    def _has_info_keyword(cls, text: str) -> bool:
+        # Whole words only: a merchant such as "Jump Inc Bicester" must not match "bic" (the side panel's BIC).
+        return any(re.search(r'(?<![a-z0-9])' + re.escape(k) + r'(?![a-z0-9])', text) for k in cls.INFO_BOX_KEYWORDS)
+
     def _should_skip_row(self, row_text: str) -> bool:
         stripped = (row_text or '').strip()
         if not stripped:
@@ -672,7 +691,7 @@ class NationwideParser(BaseTransactionParser):
 
         if any(row_lower.startswith(prefix) for prefix in self.INFO_BOX_PREFIXES):
             return True
-        if any(keyword in row_lower for keyword in self.INFO_BOX_KEYWORDS):
+        if self._has_info_keyword(row_lower):
             return True
         return False
 
