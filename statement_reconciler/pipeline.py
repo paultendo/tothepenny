@@ -292,6 +292,10 @@ class ExtractionPipeline:
                         balance_reconciled = fallback_reconciled
                         warnings = (post_warnings or []) + fallback_warnings
 
+            # A reconciled result must tie to figures the bank printed, not only to itself.
+            if balance_reconciled:
+                balance_reconciled, warnings = self._require_printed_figures(file_path, text, statement, transactions, warnings)
+
             # Last resort for any bank: where the statement prints a balance on every line, read it line by line
             # against those balances. Used only when it fully reconciles.
             if perform_validation and not balance_reconciled and file_path.suffix.lower() == '.pdf':
@@ -307,6 +311,9 @@ class ExtractionPipeline:
                         warnings = ["Read line by line against the statement's printed running balances."] + (
                             [f"{flips} entr{'y' if flips == 1 else 'ies'} read against the column they sit in, because only that direction matches the printed balance."] if flips else []
                         ) + chain_warnings
+
+            if balance_reconciled:
+                balance_reconciled, warnings = self._require_printed_figures(file_path, text, statement, transactions, warnings)
 
             # 2e. Calculate overall confidence
             overall_confidence = self._calculate_overall_confidence(
@@ -887,6 +894,24 @@ class ExtractionPipeline:
         logger.info(f"Combined statement date range: {earliest.date()} to {latest.date()}")
 
         return earliest, latest
+
+    def _require_printed_figures(self, file_path: Path, text: str, statement: Statement, transactions: list,
+                                 warnings: list) -> Tuple[bool, list]:
+        """Keep a reconciled verdict only if the balances tie to figures printed on the statement."""
+        from .validators.printed_figures import printed_figures, tied_to_printed_figures
+        texts = [text]
+        if file_path.suffix.lower() == '.pdf':
+            try:
+                from .extractors.page_reader import layout_text
+                texts.append(layout_text(file_path))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Laid-out text unavailable for the printed-figure check (%s)", exc)
+        ok, reason = tied_to_printed_figures(printed_figures(*texts), statement.opening_balance,
+                                             statement.closing_balance, transactions)
+        if ok:
+            return True, warnings
+        logger.warning(reason)
+        return False, list(warnings) + [reason]
 
     def _read_by_running_balance(self, file_path: Path, statement: Statement) -> list:
         from .parsers.running_balance_reader import layout_text, read_running_balance, to_date
