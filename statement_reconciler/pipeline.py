@@ -504,14 +504,18 @@ class ExtractionPipeline:
         max_page_width = 0.0
 
         try:
-            with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages:
-                    max_page_width = max(max_page_width, page.width)
-                    words = page.extract_words(x_tolerance=1.0, use_text_flow=True)
-                    for word in words:
-                        text = word.get('text', '').replace(',', '').replace('£', '')
-                        if self.AMOUNT_PATTERN.match(text):
-                            max_amount_x1 = max(max_amount_x1, word['x1'])
+            from .extractors.page_reader import own_reader_enabled, read_pages
+            if own_reader_enabled():
+                layout = [(page.width, page.words) for page in read_pages(file_path)]
+            else:
+                with pdfplumber.open(file_path) as pdf:
+                    layout = [(page.width, page.extract_words(x_tolerance=1.0, use_text_flow=True)) for page in pdf.pages]
+            for width, words in layout:
+                max_page_width = max(max_page_width, width)
+                for word in words:
+                    text = word.get('text', '').replace(',', '').replace('£', '')
+                    if self.AMOUNT_PATTERN.match(text):
+                        max_amount_x1 = max(max_amount_x1, word['x1'])
         except Exception as exc:
             logger.warning(f"Failed to compute dynamic bbox for {file_path.name}: {exc}")
             return None

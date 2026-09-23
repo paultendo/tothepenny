@@ -45,6 +45,34 @@ class PDFExtractor(BaseExtractor):
         """
         return file_path.suffix.lower() == '.pdf'
 
+    def _extract_own(self, file_path: Path, bbox: Optional[dict], text_kwargs: dict, capture_words: bool):
+        """The same result as the pdfplumber path, from our own page reader (one read per file, shared)."""
+        from .page_reader import read_pages
+        try:
+            pages = read_pages(file_path)
+        except Exception as e:  # noqa: BLE001
+            raise ExtractionError(f"PDF extraction failed: {e}") from e
+        tolerance = text_kwargs.get('y_tolerance')
+        all_text, word_layout, pages_with_text = [], ([] if capture_words else None), 0
+        for page in pages:
+            source = page
+            if bbox:
+                source = page.within(bbox.get('x0') or 0, bbox.get('top') or 0,
+                                     bbox.get('x1') if bbox.get('x1') is not None else page.width,
+                                     bbox.get('bottom') if bbox.get('bottom') is not None else page.height)
+            text = source.text(tolerance)
+            if text.strip():
+                all_text.append(f"--- Page {page.number} ---\n{text}")
+                pages_with_text += 1
+            if word_layout is not None:
+                word_layout.append({'page_number': page.number, 'width': page.width, 'height': page.height,
+                                    'words': [dict(w) for w in sorted(source.words, key=lambda w: (w['top'], w['x0']))]})
+        extracted_text = "\n\n".join(all_text)
+        if not extracted_text.strip():
+            logger.warning("No text extracted from PDF - likely scanned")
+            return "", 0.0, word_layout
+        return extracted_text, (pages_with_text / len(pages)) * 100.0, word_layout
+
     def extract(
         self,
         file_path: Path,
@@ -72,6 +100,10 @@ class PDFExtractor(BaseExtractor):
 
         if not self.can_handle(file_path):
             raise ExtractionError(f"File is not a PDF: {file_path}")
+
+        from .page_reader import own_reader_enabled
+        if own_reader_enabled():
+            return self._extract_own(file_path, bbox, text_kwargs or {}, capture_words)
 
         try:
             if bbox:

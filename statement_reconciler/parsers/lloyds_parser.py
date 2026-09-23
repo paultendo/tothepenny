@@ -16,7 +16,6 @@ import re
 from datetime import datetime
 from typing import List, Optional
 
-import pdfplumber
 
 from .base_parser import BaseTransactionParser
 from ..models import Transaction, TransactionType
@@ -104,92 +103,86 @@ class LloydsParser(BaseTransactionParser):
         transactions = []
         previous_balance = None
 
-        with pdfplumber.open(file_path) as pdf:
-            for page_num, page in enumerate(pdf.pages, 1):
-                logger.debug(f"Processing page {page_num}/{len(pdf.pages)}")
+        from ..extractors.page_reader import read_pages
+        pages = read_pages(file_path)
+        for page_num, page in enumerate(pages, 1):
+            logger.debug(f"Processing page {page_num}/{len(pages)}")
 
-                # Filter out accessibility text (white color = invisible)
-                # Lloyds uses white text (1.0, 1.0, 1.0) with tiny size (0.05) for screen readers
-                chars = [
-                    c for c in page.chars
-                    if not (
-                        c.get('non_stroking_color') == (1.0, 1.0, 1.0)  # White text
-                        or c.get('size', 9.0) < 1.0  # Tiny text (normal is ~9.0)
+            # Leave out the screen-reader layer: Lloyds draws it under a point high (normal text is ~9 points)
+            chars = [c for c in page.chars if c['height'] >= 1.0]
+
+            # Group characters by y-coordinate (rows)
+            rows = {}
+            for char in chars:
+                y = round(char['top'])
+                if y not in rows:
+                    rows[y] = []
+                rows[y].append(char)
+
+            # Process each row
+            for y in sorted(rows.keys()):
+                row_chars = sorted(rows[y], key=lambda c: c['x0'])
+
+                # Extract text from each column
+                date_text = ''.join([
+                    c['text'] for c in row_chars
+                    if self.COLUMNS['date'][0] <= c['x0'] < self.COLUMNS['date'][1]
+                ]).strip()
+
+                desc_text = ''.join([
+                    c['text'] for c in row_chars
+                    if self.COLUMNS['description'][0] <= c['x0'] < self.COLUMNS['description'][1]
+                ]).strip()
+
+                type_text = ''.join([
+                    c['text'] for c in row_chars
+                    if self.COLUMNS['type'][0] <= c['x0'] < self.COLUMNS['type'][1]
+                ]).strip()
+
+                money_in_text = ''.join([
+                    c['text'] for c in row_chars
+                    if self.COLUMNS['money_in'][0] <= c['x0'] < self.COLUMNS['money_in'][1]
+                ]).strip()
+
+                money_out_text = ''.join([
+                    c['text'] for c in row_chars
+                    if self.COLUMNS['money_out'][0] <= c['x0'] < self.COLUMNS['money_out'][1]
+                ]).strip()
+
+                balance_text = ''.join([
+                    c['text'] for c in row_chars
+                    if self.COLUMNS['balance'][0] <= c['x0'] < self.COLUMNS['balance'][1]
+                ]).strip()
+
+                # Check if this looks like a transaction row
+                # Date format: "03 Jan 23" or "26 Jan 23"
+                if not re.match(r'\d{1,2}\s+\w{3}\s+\d{2}', date_text):
+                    continue
+
+                # Skip header rows
+                if 'Date' in date_text or 'Description' in desc_text:
+                    continue
+
+                # Parse transaction
+                try:
+                    txn = self._parse_single_transaction(
+                        date_text,
+                        desc_text,
+                        type_text,
+                        money_in_text,
+                        money_out_text,
+                        balance_text,
+                        statement_start_date,
+                        statement_end_date
                     )
-                ]
-
-                # Group characters by y-coordinate (rows)
-                rows = {}
-                for char in chars:
-                    y = round(char['top'])
-                    if y not in rows:
-                        rows[y] = []
-                    rows[y].append(char)
-
-                # Process each row
-                for y in sorted(rows.keys()):
-                    row_chars = sorted(rows[y], key=lambda c: c['x0'])
-
-                    # Extract text from each column
-                    date_text = ''.join([
-                        c['text'] for c in row_chars
-                        if self.COLUMNS['date'][0] <= c['x0'] < self.COLUMNS['date'][1]
-                    ]).strip()
-
-                    desc_text = ''.join([
-                        c['text'] for c in row_chars
-                        if self.COLUMNS['description'][0] <= c['x0'] < self.COLUMNS['description'][1]
-                    ]).strip()
-
-                    type_text = ''.join([
-                        c['text'] for c in row_chars
-                        if self.COLUMNS['type'][0] <= c['x0'] < self.COLUMNS['type'][1]
-                    ]).strip()
-
-                    money_in_text = ''.join([
-                        c['text'] for c in row_chars
-                        if self.COLUMNS['money_in'][0] <= c['x0'] < self.COLUMNS['money_in'][1]
-                    ]).strip()
-
-                    money_out_text = ''.join([
-                        c['text'] for c in row_chars
-                        if self.COLUMNS['money_out'][0] <= c['x0'] < self.COLUMNS['money_out'][1]
-                    ]).strip()
-
-                    balance_text = ''.join([
-                        c['text'] for c in row_chars
-                        if self.COLUMNS['balance'][0] <= c['x0'] < self.COLUMNS['balance'][1]
-                    ]).strip()
-
-                    # Check if this looks like a transaction row
-                    # Date format: "03 Jan 23" or "26 Jan 23"
-                    if not re.match(r'\d{1,2}\s+\w{3}\s+\d{2}', date_text):
-                        continue
-
-                    # Skip header rows
-                    if 'Date' in date_text or 'Description' in desc_text:
-                        continue
-
-                    # Parse transaction
-                    try:
-                        txn = self._parse_single_transaction(
-                            date_text,
-                            desc_text,
-                            type_text,
-                            money_in_text,
-                            money_out_text,
-                            balance_text,
-                            statement_start_date,
-                            statement_end_date
-                        )
-                        if txn:
-                            txn = self._apply_balance_inference(txn, previous_balance)
-                            previous_balance = txn.balance if txn.balance is not None else previous_balance
-                            transactions.append(txn)
-                            logger.debug(f"Parsed transaction: {txn.date.date()} {txn.description[:30]}")
-                    except Exception as e:
-                        logger.warning(f"Failed to parse transaction at y={y}: {e}")
-                        continue
+                    if txn:
+                        txn = self._apply_balance_inference(txn, previous_balance)
+                        previous_balance = txn.balance if txn.balance is not None else previous_balance
+                        transactions.append(txn)
+                        logger.debug(f"Parsed transaction: {txn.date.date()} {txn.description[:30]}")
+                except Exception as e:
+                    logger.warning(f"Failed to parse transaction at y={y}: {e}")
+                    continue
 
         logger.info(f"Extracted {len(transactions)} transactions from Lloyds statement")
         return transactions

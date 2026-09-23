@@ -246,16 +246,10 @@ def write_batch_report_csv(summary: BatchRunSummary, report_path: Path) -> None:
 def _pdf_has_text(file_path: Path, max_pages: int = 2) -> bool:
     """Return True if a PDF appears to contain extractable text."""
     try:
-        import pdfplumber
-    except Exception:
-        logger.debug("pdfplumber not available; assuming PDF has text")
-        return True
-
-    try:
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages[:max_pages]:
-                if (page.extract_text() or '').strip():
-                    return True
+        from .extractors.page_reader import read_pages
+        # The whole file is read once here and cached, so the pipeline that follows reuses it.
+        if any(page.words for page in read_pages(file_path)[:max_pages]):
+            return True
     except Exception as exc:  # noqa: BLE001
         logger.debug("Failed to inspect PDF text for %s: %s", file_path, exc)
         return True
