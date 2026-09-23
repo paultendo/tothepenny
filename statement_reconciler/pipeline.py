@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
-from .models import ExtractionResult, Statement
+from .models import ExtractionResult, Statement, Transaction
 from .extractors import PDFExtractor
 from .extractors.pdftotext_extractor import PDFToTextExtractor
 from .parsers import TransactionParser
@@ -233,6 +233,9 @@ class ExtractionPipeline:
 
             # 2c. Parse transactions
             transactions = self._parse_transactions(text, bank_config, statement, file_path, word_layout)
+            if not transactions and file_path.suffix.lower() == '.pdf':
+                # A layout the bank's parser does not know may still be readable line by line.
+                transactions = self._read_by_running_balance(file_path, statement)
             if not transactions:
                 return self._create_error_result(
                     "No transactions found in statement",
@@ -279,6 +282,22 @@ class ExtractionPipeline:
                         transactions = fallback_txns
                         balance_reconciled = fallback_reconciled
                         warnings = (post_warnings or []) + fallback_warnings
+
+            # Last resort for any bank: where the statement prints a balance on every line, read it line by line
+            # against those balances. Used only when it fully reconciles.
+            if perform_validation and not balance_reconciled and file_path.suffix.lower() == '.pdf':
+                chained = self._read_by_running_balance(file_path, statement)
+                if chained:
+                    self._apply_transaction_metadata(chained, statement)
+                    chain_ok, chain_warnings = self._validate_transactions(statement, chained, bank_config, perform_validation)
+                    if chain_ok:
+                        logger.info("✓ Reconciled by the running-balance reader")
+                        transactions = chained
+                        balance_reconciled = True
+                        flips = getattr(self, '_running_balance_flips', 0)
+                        warnings = ["Read line by line against the statement's printed running balances."] + (
+                            [f"{flips} entr{'y' if flips == 1 else 'ies'} read against the column they sit in, because only that direction matches the printed balance."] if flips else []
+                        ) + chain_warnings
 
             # 2e. Calculate overall confidence
             overall_confidence = self._calculate_overall_confidence(
@@ -854,6 +873,33 @@ class ExtractionPipeline:
         logger.info(f"Combined statement date range: {earliest.date()} to {latest.date()}")
 
         return earliest, latest
+
+    def _read_by_running_balance(self, file_path: Path, statement: Statement) -> list:
+        from .parsers.running_balance_reader import layout_text, read_running_balance, to_date
+        try:
+            result = read_running_balance(layout_text(file_path))
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Running-balance reader unavailable (%s)", exc)
+            return []
+        if not result.reconciled:
+            logger.info("Running-balance reader did not reconcile (%s)", result.reason)
+            return []
+        self._running_balance_flips = result.flipped
+        if statement.opening_balance in (None, 0.0) and result.opening is not None:
+            statement.opening_balance = result.opening
+        if statement.closing_balance in (None, 0.0) and result.closing is not None:
+            statement.closing_balance = result.closing
+        transactions = []
+        for row in result.rows:
+            transactions.append(Transaction(
+                date=to_date(row.date_text, statement.statement_start_date, statement.statement_end_date),
+                description=' '.join(row.description).strip() or 'Transaction',
+                money_in=row.amount if row.direction == 'in' else 0.0,
+                money_out=row.amount if row.direction == 'out' else 0.0,
+                balance=row.balance,
+                confidence=100.0,
+            ))
+        return transactions
 
     def _parse_transactions(
         self,
