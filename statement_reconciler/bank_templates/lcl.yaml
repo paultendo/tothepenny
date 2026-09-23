@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# LCL (Le Crédit Lyonnais) Bank Configuration
+# French bank - major retail bank, part of Crédit Agricole group
+
+lcl:
+  # Bank identification patterns
+  identifiers:
+    - "LCL"
+    - "Le Crédit Lyonnais"
+    - "Crédit Lyonnais"
+    - "CREDIT LYONNAIS"
+    - "lcl.fr"
+    - "RELEVE DE COMPTE"
+
+  # Header patterns for metadata extraction
+  header_patterns:
+    # Account holder name
+    account_name: "(?:M\\.?|MME\\.?|MONSIEUR|MADAME)\\s+([A-Z]+(?:\\s+[A-Z]+)*)"
+    # Account number
+    account_number: "(?:Compte|N°)\\s*:?\\s*(\\d+)"
+    # RIB/IBAN
+    iban: "IBAN\\s*:?\\s*([A-Z0-9\\s]+)"
+    # BIC
+    bic: "BIC\\s*:?\\s*([A-Z0-9]+)"
+    # Statement period
+    period_start: "(?:Du|Période)\\s+(\\d{2}/\\d{2}/\\d{4})"
+    period_end: "(?:au|À)\\s+(\\d{2}/\\d{2}/\\d{4})"
+    # Balances
+    previous_balance: "(?:Solde précédent|Ancien solde).*?([\\d\\s,]+,\\d{2})"
+    new_balance: "(?:Nouveau solde|Solde actuel).*?([\\d\\s,]+,\\d{2})"
+
+  # Date formats used in LCL statements
+  date_formats:
+    - "%d.%m"         # LCL format: DD.MM (year inferred from period)
+    - "%d.%m.%y"      # Valeur date: DD.MM.YY
+    - "%d/%m/%Y"      # Full French format: 01/09/2024
+    - "%d.%m.%Y"      # Full alternative: 01.09.2024
+    - "%Y-%m-%d"      # ISO format (from Vision API)
+
+  # Currency
+  currency: "EUR"
+
+  # Transaction table structure
+  # LCL format: Date (DD.MM) | Libellé | Valeur (DD.MM.YY) | Débit | Crédit
+  table_structure:
+    columns:
+      - date              # Date (DD.MM)
+      - description       # Libellé
+      - date_value        # Valeur (DD.MM.YY) - value date
+      - debit            # Débit
+      - credit           # Crédit
+
+  # Transaction markers
+  transaction_markers:
+    start: "Date.*Libellé.*Débit.*Crédit"
+    balance_marker: "Solde"
+
+  # Validation rules
+  validation:
+    # Balance tolerance for reconciliation (in EUR)
+    balance_tolerance: 0.01
+    # Require at least one transaction
+    min_transactions: 1
+    # Date should be in chronological order
+    enforce_date_order: true
+    # Description should not be empty
+    require_description: true
+
+  # Field mapping to standardized output
+  field_mapping:
+    debit: "money_out"
+    credit: "money_in"
+    date: "date"
+    description: "description"
+
+  # Transaction type keywords (French)
+  transaction_types:
+    transfer:
+      - "Virement"
+      - "VIR"
+      - "VIR SEPA"
+    card:
+      - "Carte"
+      - "CB"
+      - "Paiement carte"
+    withdrawal:
+      - "Retrait"
+      - "DAB"
+      - "ATM"
+    direct_debit:
+      - "Prélèvement"
+      - "Prlv"
+    cheque:
+      - "Chèque"
+      - "Cheque"
+    deposit:
+      - "Versement"
+      - "Remise"
+    fee:
+      - "Frais"
+      - "Commission"
+    interest:
+      - "Intérêts"
+      - "Interets"
+
+  # Notes for processing
+  notes:
+    - "LCL is part of Crédit Agricole group"
+    - "Similar format to Crédit Agricole statements"
+    - "May include DUPLICATA watermark on photocopies"
+    - "Often provided as scanned/photo documents"
+    - "Supports both native PDF and Vision API extraction"

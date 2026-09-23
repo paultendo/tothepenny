@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# Lloyds Bank Configuration
+
+lloyds:
+  identifiers:
+    - "Lloyds Bank"
+    - "LLOYDS TSB"
+    - "lloydsbank"
+    - "Sort Code77-09-01"  # Common Lloyds sort code prefix
+
+  # Statement header fields
+  header_patterns:
+    account_number: "Account Number\\s*(\\d{8})"
+    sort_code: "Sort Code\\s*(\\d{2}-\\d{2}-\\d{2})"
+    period_start: "(\\d{1,2}\\s+\\w+\\s+\\d{4})\\s+to"
+    period_end: "to\\s+(\\d{1,2}\\s+\\w+\\s+\\d{4})"
+
+  # Date formats used in this statement
+  date_formats:
+    - "%d %b %y"      # "03 Jan 23"
+    - "%d %B %y"      # "03 January 23"
+    - "%d %b %Y"      # "03 Jan 2023"
+    - "%d %B %Y"      # "03 January 2023"
+
+  # Transaction type keywords
+  transaction_types:
+    transfer:
+      - "FPO"  # Faster Payment Outbound
+      - "BGC"  # Bank Giro Credit
+
+    direct_debit:
+      - "DD"
+
+    standing_order:
+      - "SO"
+
+    card_payment:
+      - "DEB"  # Debit card
+
+    cash_withdrawal:
+      - "CPT"  # Cash Point (ATM)
+
+    interest:
+      - "INTEREST"
+      - "CREDIT INTEREST"
+
+    fee:
+      - "FEE"
+      - "CHARGE"
+
+  # Validation rules
+  validation:
+    balance_tolerance: 0.01
+    enforce_date_order: true
+    require_description: true
+
+  # Field mapping to standardized output
+  field_mapping:
+    money_in: "money_in"
+    money_out: "money_out"
+    date: "date"
+    type: "transaction_type"
+    description: "description"
+    balance: "balance"

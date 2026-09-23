@@ -1,0 +1,32 @@
+# Never commit real statements or anything extracted from them.
+*.pdf
+*.PDF
+*.xlsx
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+statements/
+cases/
+output/
+logs/
+tmp/
+batch_output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+.DS_Store

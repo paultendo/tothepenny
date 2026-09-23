@@ -1,0 +1,30 @@
+statement-reconciler
+Copyright (C) 2026 Paul Wood FRSA (GitHub: @paultendo, https://github.com/paultendo).
+All rights reserved except as licensed below.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General
+Public License as published by the Free Software Foundation, version 3 of the License only (AGPL-3.0-only). It is
+also available under a separate commercial licence from the copyright holder; see COMMERCIAL.md.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+details. It is a tool for reading bank statements, not financial, accounting or legal advice.
+
+Additional terms under section 7 of the GNU Affero General Public License
+--------------------------------------------------------------------------
+
+These terms supplement the AGPL for this program, as section 7 permits:
+
+a. Author attribution (section 7(b)). You must preserve, in every copy and in any modified version, the copyright
+   notice above and the attribution "statement-reconciler by Paul Wood FRSA". Where a modified version displays
+   Appropriate Legal Notices, those notices must include that attribution.
+
+b. Trademarks (section 7(e)). This licence does not grant any right to use the name "statement-reconciler", or any
+   logo or trade mark of the copyright holder, except to describe the origin of the program accurately. A modified
+   version distributed or offered to others must not be presented under that name. See TRADEMARKS.md.
+
+Third-party components
+----------------------
+
+statement-reconciler's Python dependencies are published under permissive licences (MIT, BSD, Apache-2.0, HPND).
+It invokes Poppler (pdftotext) and Tesseract as separate programs, and those are governed by their own licences.

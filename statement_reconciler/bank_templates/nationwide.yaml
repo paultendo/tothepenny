@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# Nationwide Building Society Configuration
+
+nationwide:
+  identifiers:
+    - "Nationwide"
+    - "Nationwide Building Society"
+    - "NAIAGB21"  # BIC code
+    - "FlexAccount"
+
+  header_patterns:
+    # Account holder: "Mr A N Other & Miss J Example"
+    account_name: "^\\s*((?:Mr|Mrs|Miss|Ms|Dr|Prof)\\s+[A-Z][^\\n]+?)\\s*$"
+    # Account number from header: "Account no                       12345678"
+    account_number: "Account no\\s+(\\d+)"
+    # Sort code: "Sort code                          11-22-33"
+    sort_code: "Sort code\\s+(\\d{2}-\\d{2}-\\d{2})"
+    # Statement date from header: "Statement date: 23 March 2023"
+    statement_date: "Statement(?:\\s*date:|date:)?\\s*(\\d{1,2}\\s*[A-Za-z]+\\s*\\d{4})"
+    # Start balance: "Start balance                        £49.50"
+    previous_balance: "Start balance\\s+£([\\d,]+\\.\\d{2})"
+    # End balance: "End balance                          £316.17"
+    new_balance: "End balance\\s+£([\\d,]+\\.\\d{2})"
+
+  date_formats:
+    - "%d %b %Y"      # "15 Jan 2025"
+    - "%d %b"         # "15 Jan" (year inferred from statement date)
+    - "%d %B %Y"      # "09 February 2025"
+    - "%Y"            # "2025" (year only, from first date line)
+
+  # Transaction table structure
+  # Format: Date | Description | £ Out | £ In | £ Balance
+  table_structure:
+    columns:
+      - date
+      - description
+      - money_out
+      - money_in
+      - balance
+
+  # Transaction type keywords
+  transaction_types:
+    bank_credit:
+      - "Bank credit"
+      - "BANK CREDIT"
+
+    direct_debit:
+      - "Direct debit"
+      - "DIRECT DEBIT"
+
+    transfer:
+      - "Transfer to"
+      - "Transfer from"
+      - "TRANSFER"
+
+    payment:
+      - "Payment to"
+      - "Payment from"
+      - "PAYMENT"
+
+    standing_order:
+      - "Standing order"
+      - "STANDING ORDER"
+
+  # Special transaction markers
+  special_transactions:
+    balance_forward: "Balance from statement"
+
+  # Bank-specific skip patterns (in addition to universal patterns)
+  skip_patterns:
+    - "Nationwide Building Society"
+    - "Please check"
+    - "Interest, Rates and Fees"
+    - "Summary box"
+    - "Credit interest"
+    - "Arranged overdraft"
+    - "AER stands for"
+    - "Have you lost your card"
+    - "As an example"
+    - "For the.*example"
+    - "incurred up to"
+    - "withdrawal in a"
+    - "us as a sterling"
+    - "Non-Sterling Transaction"
+    - "is higher as we charge interest"  # Info box text
+    - "FlexAccount"
+    - "Your.*transactions"
+    - "Balance from statement \\d+"
+
+  pdf_bbox_strategy:
+    type: "dynamic_amount_x1"
+    margin: 15  # keep real columns plus small padding
+    x0: 0
+    top: 0
+    bottom: null
+
+  pdfplumber_text_kwargs:
+    x_tolerance: 1.0
+    y_tolerance: 1.2
+
+  capture_word_layout: true
+
+  validation:
+    balance_tolerance: 0.01
+    enforce_date_order: false  # Nationwide can have multiple transactions on same date
+    require_description: true
+
+  field_mapping:
+    money_out: "money_out"
+    money_in: "money_in"
+    date: "date"
+    description: "description"
+    balance: "balance"

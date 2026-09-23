@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# Halifax Bank Configuration
+# Based on Ultimate Reward Current Account statement format
+
+halifax:
+  identifiers:
+    - "Halifax"
+    - "HALIFAX"
+    - "Bank of Scotland"
+
+  # Statement header fields
+  header_patterns:
+    account_name: "Document requested by:\\s*([^\n]+)"
+    account_number: "Account Number\\s+(\\d+)"
+    sort_code: "Sort Code\\s+(\\d{2}-\\d{2}-\\d{2})"
+    statement_date: "(\\d{2}\\s+\\w+\\s+\\d{4})"
+    period_start: "(\\d{2}\\s+\\w+\\s+\\d{4})\\s+to"
+    period_end: "to\\s+(\\d{2}\\s+\\w+\\s+\\d{4})"
+    money_in: "Money In\\s+£([\\d,]+\\.\\d{2})"
+    money_out: "Money Out\\s+£([\\d,]+\\.\\d{2})"
+    opening_balance: "Balance on\\s+\\d{2}\\s+\\w+\\s+\\d{4}\\s+-?£([\\d,]+\\.\\d{2})"
+    closing_balance: "Balance on\\s+\\d{2}\\s+\\w+\\s+\\d{4}\\s+-?£[\\d,]+\\.\\d{2}\\s+Balance on\\s+\\d{2}\\s+\\w+\\s+\\d{4}\\s+-?£([\\d,]+\\.\\d{2})"
+
+  # Date formats used in this statement
+  date_formats:
+    - "%d %b %y"      # "02 Dec 24"
+    - "%d %B %Y"      # "01 December 2024"
+    - "%d %b %Y"      # "02 Dec 2024"
+
+  # Transaction table structure
+  table_structure:
+    columns:
+      - date
+      - description
+      - type
+      - money_in
+      - money_out
+      - balance
+
+  # Transaction type codes (Halifax specific)
+  transaction_types:
+    fpi:
+      name: "Faster Payment In"
+      direction: "in"
+      keywords: ["FPI"]
+
+    fpo:
+      name: "Faster Payment Out"
+      direction: "out"
+      keywords: ["FPO"]
+
+    dd:
+      name: "Direct Debit"
+      direction: "out"
+      keywords: ["DD"]
+
+    deb:
+      name: "Debit"
+      direction: "out"
+      keywords: ["DEB"]
+
+    chg:
+      name: "Charge"
+      direction: "out"
+      keywords: ["CHG"]
+
+    fee:
+      name: "Fee"
+      direction: "out"
+      keywords: ["FEE"]
+
+    pi:
+      name: "Payment In"
+      direction: "in"
+      keywords: ["PI"]
+
+    so:
+      name: "Standing Order"
+      direction: "out"
+      keywords: ["SO"]
+
+    cpt:
+      name: "Cashpoint"
+      direction: "out"
+      keywords: ["CPT"]
+
+    bgc:
+      name: "Bank Giro Credit"
+      direction: "in"
+      keywords: ["BGC"]
+
+    dep:
+      name: "Deposit"
+      direction: "in"
+      keywords: ["DEP"]
+
+  # Validation rules specific to Halifax
+  validation:
+    balance_tolerance: 0.01
+    enforce_date_order: true
+    require_description: true
+
+  # Field mapping to standardized output
+  field_mapping:
+    money_in: "money_in"
+    money_out: "money_out"
+    date: "date"
+    description: "description"
+    balance: "balance"
+
+  # Transaction patterns for regex extraction
+  transaction_patterns:
+    # Halifax format with pdftotext -layout: Date, Description, Type, Amount, Balance
+    # pdftotext produces cleaner output with 2+ spaces between columns
+    # Pattern: date (2+ spaces) description (2+ spaces) type (2+ spaces) amount (2+ spaces) balance
+    # Example: "02 Dec 24    DAILY OD INT 30/11    CHG    0.44    -454.25"
+    standard: |
+      ^(\d{2}\s+\w+\s+\d{2})\s{2,}(.+?)\s{2,}([A-Z]{2,4})\s{2,}([\d,]+\.\d{2})\s{2,}(-?[\d,]+\.\d{2})\s*$
+
+# Notes for parser implementation:
+# 1. Halifax uses tabular format with clear columns
+# 2. Transaction Type column (FPI, FPO, DD, etc.) indicates direction
+# 3. Either Money In OR Money Out will have value, not both
+# 4. Balances can be negative (overdraft)
+# 5. Date format is consistent: "DD MMM YY"
+# 6. No multi-line descriptions (single line per transaction)

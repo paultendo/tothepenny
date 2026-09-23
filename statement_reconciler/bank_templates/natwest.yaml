@@ -1,0 +1,167 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# NatWest Bank Configuration
+# Based on actual statement format from screenshots
+
+natwest:
+  identifiers:
+    - "NatWest"
+    - "National Westminster Bank"
+    - "NWBKGB2L"  # NatWest BIC code
+    - "RBS"
+    - "Royal Bank of Scotland"
+    - "RBOSGB2L"  # RBS BIC code
+    - "www.natwest.com"
+  
+  # Statement header fields
+  header_patterns:
+    # Account holder name: handles both formats
+    # Old format: "Account Name...(spaces)...Account No Sort Code\nMRS J EXAMPLE  12345678..."
+    # New format: "MRS JANE EXAMPLE" (first line of document, before address)
+    account_name: "Account Name[^\\n]*\\n\\s*([A-Z\\s]+?)(?=\\s{2,}\\d|\\n\\s*REWARD)|^\\s*((?:MRS?|MISS|MS)\\s+[A-Z]+(?:\\s+[A-Z]+){0,2})(?=\\s{5,}|\\n)"
+    # Account number: handles both formats
+    # New format: "Account number:                 12345678"
+    # Old format: "Account No Sort Code Page No\nMRS J EXAMPLE                 12345678   00-00-00"
+    account_number: "Account number:\\s*(\\d+)|Account No Sort Code[^\\n]*\\n[^\\n]*?(\\d{6,10})"
+    # Sort code: handles both formats
+    # New format: "Branch sort code:               000000"
+    # Old format: Numbers after account number "12345678   00-00-00"
+    sort_code: "(?:Branch\\s+)?sort code:\\s*(\\d{6}|\\d{2}[-\\s]\\d{2}[-\\s]\\d{2})|Account No Sort Code[^\\n]*\\n[^\\n]*?(\\d{2}-\\d{2}-\\d{2})"
+    statement_date: "Statement Date\\s+(\\d{1,2}\\s+\\w{3}\\s+\\d{4})|Date:\\s+(\\d{1,2}(?:st|nd|rd|th)?\\s+\\w+\\s+\\d{4})"
+    # Period can be either:
+    # "Period Covered: from 13/03/2024 to 10/04/2024"
+    # "Period                      13 Jan 2022 to 11 Feb 2022"
+    # "Date: 28th August 2020" (standalone date, period inferred from transactions)
+    period_start: "(?i)Period(?:\\s+[Cc]overed)?:?\\s+(?:from\\s+)?(\\d{1,2}/\\d{1,2}/\\d{4}|\\d{1,2}\\s+\\w{3}\\s+\\d{4})"
+    period_end: "(?:to|TO)\\s+(\\d{1,2}/\\d{1,2}/\\d{4}|\\d{1,2}\\s+\\w{3}\\s+\\d{4})"
+    previous_balance: "Previous Balance\\s+£([\\d,]+\\.\\d{2})"
+    paid_in: "Paid In\\s+£([\\d,]+\\.\\d{2})"
+    withdrawn: "Withdrawn\\s+£([\\d,]+\\.\\d{2})"
+    new_balance: "New Balance\\s+£([\\d,]+\\.\\d{2})"
+    iban: "IBAN\\s+([A-Z0-9]+)"
+  
+  # Date formats used in this statement
+  date_formats:
+    - "%d/%m/%Y"      # "13/03/2024"
+    - "%d %b %Y"      # "18 DEC 2024" or "27 Aug 2020"
+    - "%d %b"         # "19 DEC" (year inferred from statement period)
+    - "%d %B %Y"      # "18 December 2024" or "28 August 2020" (ordinal suffix removed in normalization)
+
+  # Layout-aware extraction settings
+  pdf_bbox_strategy:
+    type: "dynamic_amount_x1"
+    margin: 18
+    x0: 0
+    top: 0
+    bottom: null
+
+  pdfplumber_text_kwargs:
+    x_tolerance: 1.0
+    y_tolerance: 1.2
+
+  capture_word_layout: true
+  force_pdfplumber: true
+  
+  # Transaction table structure
+  table_structure:
+    columns:
+      - date
+      - description
+      - paid_in        # Money IN
+      - withdrawn      # Money OUT
+      - balance
+    
+    # Column positions (approximate character positions)
+    column_boundaries:
+      date_start: 0
+      date_end: 15
+      description_start: 16
+      description_end: 500  # Multi-line descriptions
+      paid_in_start: 500
+      paid_in_end: 560
+      withdrawn_start: 560
+      withdrawn_end: 620
+      balance_start: 620
+      balance_end: 700
+  
+  # Transaction type keywords (for categorization)
+  transaction_types:
+    direct_debit:
+      - "Direct Debit"
+      - "DD"
+    
+    card_payment:
+      - "Card Transaction"
+      - "Debit Card"
+    
+    online_transfer:
+      - "OnLine Transaction"
+      - "VIA MOBILE"
+      - "PYMT"
+    
+    automated_credit:
+      - "Automated Credit"
+      - "BACS"
+      - "FASTER PAYMENT"
+      - "FP"
+    
+    standing_order:
+      - "Standing Order"
+      - "SO"
+    
+    atm_withdrawal:
+      - "ATM"
+      - "CASH"
+    
+    interest:
+      - "Interest"
+      - "CREDIT INTEREST"
+    
+    fee:
+      - "Fee"
+      - "Charge"
+      - "Service Charge"
+  
+  # Special transaction markers
+  special_transactions:
+    brought_forward: "BROUGHT FORWARD"  # Opening balance
+    carried_forward: "CARRIED FORWARD"  # Page break
+  
+  # Validation rules specific to NatWest
+  validation:
+    # Balance should reconcile exactly
+    balance_tolerance: 0.01
+    
+    # Date should be in chronological order (or same date)
+    enforce_date_order: true
+    
+    # Description should not be empty
+    require_description: true
+  
+  # Field mapping to standardized output
+  field_mapping:
+    paid_in: "money_in"
+    withdrawn: "money_out"
+    date: "date"
+    description: "description"
+    balance: "balance"
+
+  # Transaction patterns for regex extraction
+  transaction_patterns:
+    # NatWest format: Lines ending with 1 or 2 decimal amounts
+    # Format: description (space) amount [balance]
+    # Examples:
+    # "123456789012345678  150.00 199.45" -> amount=150.00, balance=199.45
+    # "123456789012N 20.00 69.45" -> amount=20.00, balance=69.45
+    # "18 DEC 2024 BROUGHT FORWARD 49.45" -> amount=49.45, balance=None
+    standard: |
+      (?P<description>.+?)\s+(?P<amount>[\d,]+\.\d{2})(?:\s+(?P<balance>[\d,]+\.\d{2}))?\s*$
+
+# Notes for parser implementation:
+# 1. NatWest uses multi-line descriptions - need to handle line continuation
+# 2. Dates can be with or without year - infer year from statement period
+# 3. "BROUGHT FORWARD" transaction shows opening balance
+# 4. Some descriptions include reference numbers/codes (long alphanumeric strings)
+# 5. Amounts are formatted with commas for thousands: £1,234.56
+# 6. Empty cells in Paid In or Withdrawn columns (only one will have value per row)

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# Revolut native account statements. Source headers and sections drive parsing.
+revolut:
+  identifiers:
+    - "Revolut Ltd"
+    - "Revolut Bank UK Ltd"
+    - "Revolut Bank UAB"
+    - "REVOGB21"
+  currency: GBP
+  date_formats:
+    - "%d %b %Y"
+    - "%d %B %Y"
+  validation:
+    balance_tolerance: 0.0001
