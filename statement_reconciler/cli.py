@@ -3,6 +3,7 @@
 
 """Command-line interface for bank statement extractor."""
 import click
+import os
 import sys
 from pathlib import Path
 from rich.console import Console
@@ -154,7 +155,9 @@ def banks():
 @click.option('--limit', type=int, help='Process only the first N files (useful for dry runs)')
 @click.option('--skip-existing', is_flag=True, help='Skip files whose output already exists in the output directory')
 @click.option('--skip-scanned', is_flag=True, help='Skip PDFs that appear to be scanned (no extractable text)')
-def batch(directory, output_dir, format, bank, json_dir, manifest, limit, skip_existing, skip_scanned):
+@click.option('--workers', '-w', type=int, default=None,
+              help='Statements to process at once (default: one per CPU core, up to 8)')
+def batch(directory, output_dir, format, bank, json_dir, manifest, limit, skip_existing, skip_scanned, workers):
     """Process every statement file in DIRECTORY and emit a manifest."""
     directory = Path(directory)
 
@@ -204,6 +207,7 @@ def batch(directory, output_dir, format, bank, json_dir, manifest, limit, skip_e
             skip_scanned=skip_scanned,
             progress_callback=cli_progress,
             root_directory=directory,
+            workers=workers if workers is not None else min(8, os.cpu_count() or 1),
         )
         progress.update(task, description="Batch complete", completed=len(files))
 

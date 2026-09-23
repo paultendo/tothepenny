@@ -58,6 +58,73 @@ class BatchRunSummary:
         }
 
 
+_PIPELINE: Optional[ExtractionPipeline] = None
+
+
+def _pipeline() -> ExtractionPipeline:
+    """One pipeline per process, so each worker loads the bank templates once."""
+    global _PIPELINE
+    if _PIPELINE is None:
+        _PIPELINE = ExtractionPipeline()
+    return _PIPELINE
+
+
+def _process_file(
+    file_path: Path,
+    output_dir: Path,
+    export_format: str,
+    bank: Optional[str],
+    json_output_dir: Optional[Path],
+    skip_existing: bool,
+    skip_scanned: bool,
+    force_vision: bool,
+    keep_result: bool = False,
+):
+    """Process one file. Returns (row, outcome, result), where outcome is 'success', 'failure' or 'skipped' and
+    result is the ExtractionResult when keep_result is set and extraction succeeded."""
+    output_path = output_dir / f"{file_path.stem}.{export_format}"
+    json_path = (json_output_dir / f"{file_path.stem}.json") if json_output_dir else None
+
+    def skipped_row(warnings: List[str]) -> BatchFileResult:
+        return BatchFileResult(file=file_path.name, output=str(output_path), json=str(json_path) if json_path else None,
+                               success=True, skipped=True, transactions=None, warnings=warnings)
+
+    if skip_scanned and file_path.suffix.lower() == '.pdf' and not _pdf_has_text(file_path):
+        return skipped_row(["Skipped scanned PDF (no text detected)"]), 'skipped', None
+    if skip_existing and output_path.exists():
+        return skipped_row([]), 'skipped', None
+
+    try:
+        result = _pipeline().process(
+            file_path=file_path,
+            output_path=output_path,
+            bank_name=bank,
+            perform_validation=True,
+            export_format=export_format,
+            force_vision=force_vision,
+        )
+        if json_path:
+            json_path.write_text(json.dumps(result.to_dict(), indent=2), encoding='utf-8')
+        row = BatchFileResult(
+            file=file_path.name,
+            output=str(output_path),
+            json=str(json_path) if json_path else None,
+            success=result.success,
+            skipped=False,
+            transactions=result.transaction_count,
+            confidence=result.confidence_score,
+            reconciled=result.balance_reconciled,
+            bank=result.statement.bank_name if result.statement else None,
+            warnings=list(result.warnings),
+            error=result.error_message if not result.success else None,
+            processing_time=result.processing_time,
+        )
+        return row, ('success' if result.success else 'failure'), (result if keep_result and result.success else None)
+    except Exception as exc:  # noqa: BLE001
+        return BatchFileResult(file=file_path.name, output=str(output_path), json=str(json_path) if json_path else None,
+                               success=False, skipped=False, error=str(exc), transactions=None, warnings=[]), 'failure', None
+
+
 def run_batch(
     files: Sequence[Path] | Iterable[Path],
     output_dir: Path,
@@ -71,8 +138,14 @@ def run_batch(
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
     result_handler: Optional[Callable[[Path, 'ExtractionResult'], None]] = None,
     root_directory: Optional[Path] = None,
+    workers: int = 1,
 ) -> BatchRunSummary:
-    """Process files with the ExtractionPipeline and return a structured summary."""
+    """Process files with the ExtractionPipeline and return a structured summary.
+
+    With workers > 1, files are processed in parallel, one process each; every file is independent, so the results
+    are the same as a serial run and are reported in the original order. A result_handler needs the full result
+    object in this process, so it always runs serially.
+    """
 
     export_format = format.lower()
     if export_format not in {'xlsx', 'csv'}:
@@ -84,105 +157,29 @@ def run_batch(
     if json_output_dir:
         json_output_dir.mkdir(parents=True, exist_ok=True)
 
-    pipeline = ExtractionPipeline()
-    results: List[BatchFileResult] = []
-    successes = failures = skipped = 0
+    options = (output_dir, export_format, bank, json_output_dir, skip_existing, skip_scanned, force_vision)
+    outcomes: List[Optional[tuple]] = [None] * total_files
 
-    for idx, file_path in enumerate(file_list, start=1):
-        output_path = output_dir / f"{file_path.stem}.{export_format}"
-        json_path = (json_output_dir / f"{file_path.stem}.json") if json_output_dir else None
-
-        if skip_scanned and file_path.suffix.lower() == '.pdf':
-            if not _pdf_has_text(file_path):
-                skipped += 1
-                results.append(
-                    BatchFileResult(
-                        file=file_path.name,
-                        output=str(output_path),
-                        json=str(json_path) if json_path else None,
-                        success=True,
-                        skipped=True,
-                        transactions=None,
-                        warnings=["Skipped scanned PDF (no text detected)"],
-                    )
-                )
+    if workers > 1 and result_handler is None and total_files > 1:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        with ProcessPoolExecutor(max_workers=min(workers, total_files)) as pool:
+            futures = {pool.submit(_process_file, path, *options): i for i, path in enumerate(file_list)}
+            for done, future in enumerate(as_completed(futures), start=1):
+                index = futures[future]
+                outcomes[index] = future.result()
                 if progress_callback:
-                    progress_callback(idx, total_files, file_path.name)
-                continue
-
-        if skip_existing and output_path.exists():
-            skipped += 1
-            results.append(
-                BatchFileResult(
-                    file=file_path.name,
-                    output=str(output_path),
-                    json=str(json_path) if json_path else None,
-                    success=True,
-                    skipped=True,
-                    transactions=None,
-                    warnings=[],
-                )
-            )
-            if progress_callback:
-                progress_callback(idx, total_files, file_path.name)
-            continue
-
-        try:
-            result = pipeline.process(
-                file_path=file_path,
-                output_path=output_path,
-                bank_name=bank,
-                perform_validation=True,
-                export_format=export_format,
-                force_vision=force_vision,
-            )
-
-            if result_handler and result.success:
+                    progress_callback(done, total_files, file_list[index].name)
+    else:
+        for idx, file_path in enumerate(file_list, start=1):
+            outcomes[idx - 1] = _process_file(file_path, *options, keep_result=result_handler is not None)
+            row, outcome, result = outcomes[idx - 1]
+            if result_handler and result is not None:
                 result_handler(file_path, result)
-
-            if json_path:
-                json_path.write_text(json.dumps(result.to_dict(), indent=2), encoding='utf-8')
-
-            row = BatchFileResult(
-                file=file_path.name,
-                output=str(output_path),
-                json=str(json_path) if json_path else None,
-                success=result.success,
-                skipped=False,
-                transactions=result.transaction_count,
-                confidence=result.confidence_score,
-                reconciled=result.balance_reconciled,
-                bank=result.statement.bank_name if result.statement else None,
-                warnings=list(result.warnings),
-                error=result.error_message if not result.success else None,
-                processing_time=result.processing_time,
-            )
-
-            if result.success:
-                successes += 1
-            else:
-                failures += 1
-
-            results.append(row)
-
-        except Exception as exc:  # noqa: BLE001
-            failures += 1
-            results.append(
-                BatchFileResult(
-                    file=file_path.name,
-                    output=str(output_path),
-                    json=str(json_path) if json_path else None,
-                    success=False,
-                    skipped=False,
-                    error=str(exc),
-                    transactions=None,
-                    warnings=[],
-                )
-            )
-        finally:
             if progress_callback:
                 progress_callback(idx, total_files, file_path.name)
 
+    results = [row for row, _, _ in outcomes]
+    counts = {kind: sum(1 for _, outcome, _ in outcomes if outcome == kind) for kind in ('success', 'failure', 'skipped')}
     summary = BatchRunSummary(
         root_directory=str(root_directory) if root_directory else None,
         output_directory=str(output_dir),
@@ -190,9 +187,9 @@ def run_batch(
         results=results,
         totals={
             'processed': total_files,
-            'successes': successes,
-            'failures': failures,
-            'skipped': skipped,
+            'successes': counts['success'],
+            'failures': counts['failure'],
+            'skipped': counts['skipped'],
         },
     )
 
