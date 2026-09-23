@@ -86,7 +86,7 @@ class NationwideParser(BaseTransactionParser):
         """Parse Nationwide statements leveraging coordinate-aware extraction when available."""
         if self.word_layout:
             try:
-                logger.info("Parsing Nationwide via captured pdfplumber word layout")
+                logger.info("Parsing Nationwide from the captured word positions")
                 return self._parse_with_layout(
                     text,
                     statement_start_date,
@@ -107,7 +107,7 @@ class NationwideParser(BaseTransactionParser):
         statement_start_date: Optional[datetime],
         statement_end_date: Optional[datetime]
     ) -> List[Transaction]:
-        """Parse using coordinate rows built directly from pdfplumber word layout."""
+        """Parse using coordinate rows built directly from the word positions."""
         if not self.word_layout:
             raise ValueError("Word layout required for layout parser")
 
@@ -554,7 +554,7 @@ class NationwideParser(BaseTransactionParser):
         word_layout: list,
         y_tolerance: float = 1.2
     ) -> List[Dict[str, Any]]:
-        """Group pdfplumber words into row candidates using y-position proximity."""
+        """Group words into row candidates using y-position proximity."""
         rows: List[Dict[str, Any]] = []
 
         for page in word_layout:
@@ -851,7 +851,7 @@ class NationwideParser(BaseTransactionParser):
         info_box_limit: float = 520.0,
         target_columns: int = 220
     ) -> List[str]:
-        """Approximate pdftotext layout by projecting words onto a fixed-width grid."""
+        """Lay words out as text by projecting them onto a fixed-width grid."""
         reconstructed: List[str] = []
 
         for page in word_layout:

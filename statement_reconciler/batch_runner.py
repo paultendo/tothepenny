@@ -254,15 +254,4 @@ def _pdf_has_text(file_path: Path, max_pages: int = 2) -> bool:
         logger.debug("Failed to inspect PDF text for %s: %s", file_path, exc)
         return True
 
-    # pdfplumber can see no pages at all in a PDF whose page tree it cannot follow, while poppler reads it
-    # (a Metro Bank statement, 23 September 2026). Ask pdftotext before calling a PDF scanned.
-    try:
-        import subprocess
-        out = subprocess.run(['pdftotext', '-l', str(max_pages), str(file_path), '-'],
-                             capture_output=True, text=True, timeout=60)
-        if out.stdout.strip():
-            return True
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("pdftotext check failed for %s: %s", file_path, exc)
-
     return False

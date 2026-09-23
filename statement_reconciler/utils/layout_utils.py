@@ -20,7 +20,7 @@ def normalize_word_layout_to_width(
     target_width: float = 600.0,
 ) -> Tuple[list[dict], float, float]:
     """
-    Normalize word coordinates to a pdfplumber-like coordinate space.
+    Normalize word coordinates to the page reader's coordinate space (points, measured from the top left).
 
     Many existing parsers assume PDF points with a page width around ~600.
     This rescales coordinates so downstream layout parsers can re-use their heuristics.
@@ -62,7 +62,7 @@ def reconstruct_text_from_words(
     target_columns: int = 220,
 ) -> str:
     """
-    Approximate pdftotext -layout by projecting words onto a fixed-width grid.
+    Lay words out as text by projecting them onto a fixed-width grid.
 
     This is useful for feeding downstream, text-based parsers while keeping columns
     reasonably aligned.

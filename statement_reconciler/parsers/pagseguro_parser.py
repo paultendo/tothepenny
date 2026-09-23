@@ -59,7 +59,7 @@ class PagSeguroParser(BaseTransactionParser):
         - "Saldo do dia" rows showing daily balance
 
         Args:
-            text: Raw text from pdftotext (unused, kept for interface compatibility)
+            text: Laid-out page text (unused, kept for interface compatibility)
             statement_start_date: Statement period start
             statement_end_date: Statement period end
 

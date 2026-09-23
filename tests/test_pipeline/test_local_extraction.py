@@ -13,7 +13,7 @@ from statement_reconciler.extractors.ocr_extractor import OCRExtractor
 def test_fallback_stays_local(monkeypatch, force_vision, ocr_text):
     pipeline = ExtractionPipeline()
     monkeypatch.setattr(pipeline.pdf_extractor, 'extract', lambda path: ('', 0, None))
-    monkeypatch.setattr(pipeline.pdftotext_extractor, 'extract', lambda path: ('', 0))
+    monkeypatch.setattr(pipeline.layout_text_extractor, 'extract', lambda path: ('', 0))
     monkeypatch.setattr(OCRExtractor, 'extract', lambda self, path: (ocr_text, 80, None))
     attempted = []
     original = builtins.__import__

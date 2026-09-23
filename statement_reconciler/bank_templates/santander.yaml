@@ -127,4 +127,4 @@ santander:
 # 7. Multi-line descriptions have continuation on next line with no date
 # 8. All transactions have exactly one of: money_in OR money_out (never both)
 # 9. Balance is ALWAYS present on each transaction
-# 10. Use pdftotext -layout for best results (preserves column alignment)
+# 10. Read as laid-out text for best results (keeps the columns aligned)

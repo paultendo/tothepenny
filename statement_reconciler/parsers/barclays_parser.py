@@ -55,7 +55,7 @@ class BarclaysParser(BaseTransactionParser):
         - "Start balance" has no amounts
 
         Args:
-            text: Raw text from pdftotext
+            text: Laid-out page text
             statement_start_date: Statement period start
             statement_end_date: Statement period end
 
@@ -71,6 +71,9 @@ class BarclaysParser(BaseTransactionParser):
         # Dynamic column thresholds (will be updated when headers are found)
         MONEY_OUT_THRESHOLD = 75  # Default from typical layout
         MONEY_IN_THRESHOLD = 95   # Default from typical layout
+        # Amounts left of the money columns are description text ("National Lottery I 10.00 On 12 Dec"). The edge is
+        # measured from the page's own "Money out" heading, so it holds however the text is laid out.
+        MIN_AMOUNT_POSITION = 50
 
         # PRE-SCAN: Find first header to set correct thresholds before processing
         # This fixes issues where column positions vary across pages
@@ -89,6 +92,7 @@ class BarclaysParser(BaseTransactionParser):
 
                     # Calculate thresholds (midpoints between columns)
                     MONEY_OUT_THRESHOLD = (money_out_start + money_in_start) // 2
+                    MIN_AMOUNT_POSITION = money_out_start - 4
                     MONEY_IN_THRESHOLD = (money_in_start + balance_start) // 2
 
                     logger.info(f"Pre-scan: Set Barclays column thresholds: money_out={MONEY_OUT_THRESHOLD}, money_in={MONEY_IN_THRESHOLD}")
@@ -145,6 +149,7 @@ class BarclaysParser(BaseTransactionParser):
                     balance_start = balance_match.start()
 
                     MONEY_OUT_THRESHOLD = (money_out_start + money_in_start) // 2
+                    MIN_AMOUNT_POSITION = money_out_start - 4
                     MONEY_IN_THRESHOLD = (money_in_start + balance_start) // 2
 
                     logger.debug(f"Updated Barclays column thresholds for this page: money_out={MONEY_OUT_THRESHOLD}, money_in={MONEY_IN_THRESHOLD}")
@@ -198,7 +203,6 @@ class BarclaysParser(BaseTransactionParser):
             # IMPORTANT: Ignore amounts in description text (position < 50)
             # E.g., "National Lottery I 10.00 On 12 Dec" has 10.00 in description
             amounts_with_pos = []
-            MIN_AMOUNT_POSITION = 50
             for match in amount_pattern.finditer(line):
                 amt_str = match.group(1)
                 pos = match.start()

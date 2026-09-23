@@ -96,7 +96,7 @@ nationwide:
     top: 0
     bottom: null
 
-  pdfplumber_text_kwargs:
+  text_line_settings:
     x_tolerance: 1.0
     y_tolerance: 1.2
 

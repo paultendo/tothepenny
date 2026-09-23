@@ -26,11 +26,7 @@ from datetime import datetime
 from typing import Optional, List
 from pathlib import Path
 
-try:
-    import pdfplumber
-    HAS_PDFPLUMBER = True
-except ImportError:
-    HAS_PDFPLUMBER = False
+from ..extractors.page_reader import read_pages
 
 from .base_parser import BaseTransactionParser
 from ..models import Transaction
@@ -42,7 +38,7 @@ logger = logging.getLogger(__name__)
 class CreditAgricoleParser(BaseTransactionParser):
     """Parser for Crédit Agricole bank statements.
 
-    Uses pdfplumber for table extraction to properly distinguish Débit/Crédit columns.
+    Reads the statement's tables from the page, which keeps the Débit and Crédit columns apart.
     """
 
     # Class variable to store PDF path (set by pipeline before parsing)
@@ -55,7 +51,7 @@ class CreditAgricoleParser(BaseTransactionParser):
         statement_end_date: Optional[datetime]
     ) -> List[Transaction]:
         """
-        Parse Crédit Agricole statement using pdfplumber table extraction.
+        Parse Crédit Agricole statement using table reading from the page.
 
         Crédit Agricole format:
         - Date opé. column (operation date)
@@ -72,22 +68,18 @@ class CreditAgricoleParser(BaseTransactionParser):
         - Some descriptions span multiple lines
         - Foreign currency metadata in description (e.g., "Mt initial : 1,50 GBP")
 
-        NOTE: This parser uses pdfplumber for accurate column extraction instead of
-        text-based parsing, as pdftotext does not reliably preserve Débit/Crédit markers.
+        NOTE: This parser reads the table columns from the page instead of
+        text-based parsing, as laid-out text does not reliably keep the Débit and Crédit columns apart.
 
         Args:
-            text: Raw text from pdftotext (unused, kept for interface compatibility)
+            text: Laid-out page text (unused, kept for interface compatibility)
             statement_start_date: Statement period start
             statement_end_date: Statement period end
 
         Returns:
             List of Transaction objects
         """
-        # Check if pdfplumber is available and PDF path is set
-
-        if not HAS_PDFPLUMBER:
-            logger.error("pdfplumber is required for Crédit Agricole parsing but not installed")
-            return []
+        # The PDF path must be set
 
         if not self._pdf_path:
             logger.error(f"PDF path not set: {self._pdf_path}")
@@ -97,20 +89,20 @@ class CreditAgricoleParser(BaseTransactionParser):
             logger.error(f"PDF file not found: {self._pdf_path}")
             return []
 
-        logger.info(f"Using pdfplumber table extraction for Crédit Agricole statement")
+        logger.info(f"Using table reading from the page for Crédit Agricole statement")
 
-        return self._parse_with_pdfplumber(statement_start_date, statement_end_date)
+        return self._parse_tables(statement_start_date, statement_end_date)
 
-    def _parse_with_pdfplumber(
+    def _parse_tables(
         self,
         statement_start_date: Optional[datetime],
         statement_end_date: Optional[datetime]
     ) -> List[Transaction]:
         """
-        Parse Crédit Agricole statement using pdfplumber table extraction.
+        Parse Crédit Agricole statement using table reading from the page.
 
-        pdfplumber correctly extracts the table structure with separate Débit/Crédit columns,
-        avoiding the column marker issues with pdftotext.
+        The table reader keeps the Débit and Crédit columns apart,
+        avoiding the column mix-ups of laid-out text.
 
         Returns:
             List of Transaction objects
@@ -119,171 +111,170 @@ class CreditAgricoleParser(BaseTransactionParser):
         current_balance = 0.0
 
         try:
-            with pdfplumber.open(self._pdf_path) as pdf:
-                for page_num, page in enumerate(pdf.pages, 1):
-                    # Extract tables from page
-                    tables = page.extract_tables()
+            for page_num, page in enumerate(read_pages(Path(self._pdf_path)), 1):
+                # The page's tables: rows of cells under each header line
+                tables = page.tables(('date', 'libelle', 'debit', 'credit'))
 
-                    if not tables:
+                if not tables:
+                    continue
+
+                # Process first table on page (transaction table)
+                for table in tables:
+                    if not table or len(table) < 2:
                         continue
 
-                    # Process first table on page (transaction table)
-                    for table in tables:
-                        if not table or len(table) < 2:
+                    # First row should be header
+                    header = table[0]
+
+                    # Find column indices
+                    date_ope_idx = None
+                    date_val_idx = None
+                    desc_idx = None
+                    debit_idx = None
+                    credit_idx = None
+
+                    for i, col in enumerate(header):
+                        if not col:
+                            continue
+                        col_lower = col.lower().replace('\n', ' ')
+                        # Be specific: "date opé" or "date ope" for operation date
+                        if 'date' in col_lower and ('opé' in col_lower or 'ope' in col_lower):
+                            if 'valeur' not in col_lower:  # Exclude "Date valeur"
+                                date_ope_idx = i
+                        elif 'date' in col_lower and 'valeur' in col_lower:
+                            date_val_idx = i
+                        elif 'libellé' in col_lower or 'libelle' in col_lower:
+                            desc_idx = i
+                        elif 'débit' in col_lower or 'debit' in col_lower:
+                            debit_idx = i
+                        elif 'crédit' in col_lower or 'credit' in col_lower:
+                            credit_idx = i
+
+                    if desc_idx is None:
+                        logger.debug(f"Page {page_num}: Table doesn't have expected columns, skipping")
+                        continue
+
+                    # Process rows
+                    for row in table[1:]:  # Skip header
+                        if not row or len(row) <= max(filter(None, [date_ope_idx, desc_idx, debit_idx, credit_idx])):
                             continue
 
-                        # First row should be header
-                        header = table[0]
+                        # Get values
+                        date_ope = row[date_ope_idx] if date_ope_idx is not None else None
+                        description = row[desc_idx] if desc_idx is not None else None
+                        debit_str = row[debit_idx] if debit_idx is not None and debit_idx < len(row) else None
+                        credit_str = row[credit_idx] if credit_idx is not None and credit_idx < len(row) else None
 
-                        # Find column indices
-                        date_ope_idx = None
-                        date_val_idx = None
-                        desc_idx = None
-                        debit_idx = None
-                        credit_idx = None
+                        description_clean = ' '.join(description.split()) if description else None
+                        description_lower = description_clean.lower() if description_clean else ''
 
-                        for i, col in enumerate(header):
-                            if not col:
-                                continue
-                            col_lower = col.lower().replace('\n', ' ')
-                            # Be specific: "date opé" or "date ope" for operation date
-                            if 'date' in col_lower and ('opé' in col_lower or 'ope' in col_lower):
-                                if 'valeur' not in col_lower:  # Exclude "Date valeur"
-                                    date_ope_idx = i
-                            elif 'date' in col_lower and 'valeur' in col_lower:
-                                date_val_idx = i
-                            elif 'libellé' in col_lower or 'libelle' in col_lower:
-                                desc_idx = i
-                            elif 'débit' in col_lower or 'debit' in col_lower:
-                                debit_idx = i
-                            elif 'crédit' in col_lower or 'credit' in col_lower:
-                                credit_idx = i
+                        balance_marker = None
+                        if description_lower:
+                            if 'ancien solde' in description_lower:
+                                balance_marker = 'BALANCE BROUGHT FORWARD'
+                            elif 'nouveau solde' in description_lower:
+                                balance_marker = 'BALANCE CARRIED FORWARD'
 
-                        if desc_idx is None:
-                            logger.debug(f"Page {page_num}: Table doesn't have expected columns, skipping")
-                            continue
+                        if balance_marker:
+                            balance_value = None
+                            if credit_str and credit_str.strip():
+                                balance_value = self._parse_french_number(credit_str)
+                            elif debit_str and debit_str.strip():
+                                balance_value = -self._parse_french_number(debit_str)
 
-                        # Process rows
-                        for row in table[1:]:  # Skip header
-                            if not row or len(row) <= max(filter(None, [date_ope_idx, desc_idx, debit_idx, credit_idx])):
-                                continue
+                            if balance_value is not None:
+                                date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', description_clean or '')
+                                balance_date = None
+                                date_source = None
+                                if date_match:
+                                    balance_date = parse_date(date_match.group(1), self.config.date_formats)
+                                    date_source = "line"
+                                if not balance_date and statement_start_date and statement_end_date:
+                                    balance_date = statement_start_date if 'BROUGHT' in balance_marker else statement_end_date
+                                    date_source = "header"
 
-                            # Get values
-                            date_ope = row[date_ope_idx] if date_ope_idx is not None else None
-                            description = row[desc_idx] if desc_idx is not None else None
-                            debit_str = row[debit_idx] if debit_idx is not None and debit_idx < len(row) else None
-                            credit_str = row[credit_idx] if credit_idx is not None and credit_idx < len(row) else None
-
-                            description_clean = ' '.join(description.split()) if description else None
-                            description_lower = description_clean.lower() if description_clean else ''
-
-                            balance_marker = None
-                            if description_lower:
-                                if 'ancien solde' in description_lower:
-                                    balance_marker = 'BALANCE BROUGHT FORWARD'
-                                elif 'nouveau solde' in description_lower:
-                                    balance_marker = 'BALANCE CARRIED FORWARD'
-
-                            if balance_marker:
-                                balance_value = None
-                                if credit_str and credit_str.strip():
-                                    balance_value = self._parse_french_number(credit_str)
-                                elif debit_str and debit_str.strip():
-                                    balance_value = -self._parse_french_number(debit_str)
-
-                                if balance_value is not None:
-                                    date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', description_clean or '')
-                                    balance_date = None
-                                    date_source = None
-                                    if date_match:
-                                        balance_date = parse_date(date_match.group(1), self.config.date_formats)
-                                        date_source = "line"
-                                    if not balance_date and statement_start_date and statement_end_date:
-                                        balance_date = statement_start_date if 'BROUGHT' in balance_marker else statement_end_date
-                                        date_source = "header"
-
-                                    transactions.append(
-                                        Transaction(
-                                            date=balance_date,
-                                            description=balance_marker,
-                                            money_in=0.0,
-                                            money_out=0.0,
-                                            balance=balance_value,
-                                            transaction_type=None,
-                                            confidence=100.0,
-                                            raw_text=description_clean,
-                                            date_source=date_source
-                                        )
+                                transactions.append(
+                                    Transaction(
+                                        date=balance_date,
+                                        description=balance_marker,
+                                        money_in=0.0,
+                                        money_out=0.0,
+                                        balance=balance_value,
+                                        transaction_type=None,
+                                        confidence=100.0,
+                                        raw_text=description_clean,
+                                        date_source=date_source
                                     )
-                                    current_balance = balance_value
-                                continue
-
-                            # Skip empty rows or summary rows
-                            if not description or not date_ope:
-                                continue
-
-                            # Skip summary/footer rows
-                            if any(keyword in description_lower for keyword in ['total des opérations', 'page ']):
-                                continue
-
-                            # Parse date
-                            date_ope = date_ope.strip() if date_ope else None
-                            if not date_ope or not re.match(r'\d{2}\.\d{2}', date_ope):
-                                continue
-
-                            # Parse amounts
-                            debit = self._parse_french_number(debit_str) if debit_str and debit_str.strip() else 0.0
-                            credit = self._parse_french_number(credit_str) if credit_str and credit_str.strip() else 0.0
-
-                            # Clean description
-                            description = ' '.join(description.split()) if description else ""
-
-                            # Translate description to English
-                            translated_description = self._translate_description(description)
-
-                            # Calculate balance
-                            new_balance = current_balance + credit - debit
-
-                            # Parse date with year inference
-                            transaction_date = None
-                            if statement_start_date and statement_end_date:
-                                transaction_date = infer_year_from_period(
-                                    date_ope,
-                                    statement_start_date,
-                                    statement_end_date,
-                                    self.config.date_formats
                                 )
-                            else:
-                                transaction_date = parse_date(date_ope, self.config.date_formats)
+                                current_balance = balance_value
+                            continue
 
-                            if not transaction_date:
-                                if looks_like_date(date_ope):
-                                    logger.warning(f"Could not parse date: {date_ope}")
-                                else:
-                                    logger.debug("Skipping non-date token during Credit Agricole parse: %s", date_ope)
-                                continue
+                        # Skip empty rows or summary rows
+                        if not description or not date_ope:
+                            continue
 
-                            # Create transaction
-                            transaction = Transaction(
-                                date=transaction_date,
-                                description=description,
-                                description_translated=translated_description,
-                                money_in=credit,
-                                money_out=debit,
-                                balance=new_balance,
-                                confidence=self._calculate_confidence(
-                                    transaction_date, description, credit, debit, new_balance
-                                )
+                        # Skip summary/footer rows
+                        if any(keyword in description_lower for keyword in ['total des opérations', 'page ']):
+                            continue
+
+                        # Parse date
+                        date_ope = date_ope.strip() if date_ope else None
+                        if not date_ope or not re.match(r'\d{2}\.\d{2}', date_ope):
+                            continue
+
+                        # Parse amounts
+                        debit = self._parse_french_number(debit_str) if debit_str and debit_str.strip() else 0.0
+                        credit = self._parse_french_number(credit_str) if credit_str and credit_str.strip() else 0.0
+
+                        # Clean description
+                        description = ' '.join(description.split()) if description else ""
+
+                        # Translate description to English
+                        translated_description = self._translate_description(description)
+
+                        # Calculate balance
+                        new_balance = current_balance + credit - debit
+
+                        # Parse date with year inference
+                        transaction_date = None
+                        if statement_start_date and statement_end_date:
+                            transaction_date = infer_year_from_period(
+                                date_ope,
+                                statement_start_date,
+                                statement_end_date,
+                                self.config.date_formats
                             )
+                        else:
+                            transaction_date = parse_date(date_ope, self.config.date_formats)
 
-                            transactions.append(transaction)
-                            current_balance = new_balance
+                        if not transaction_date:
+                            if looks_like_date(date_ope):
+                                logger.warning(f"Could not parse date: {date_ope}")
+                            else:
+                                logger.debug("Skipping non-date token during Credit Agricole parse: %s", date_ope)
+                            continue
+
+                        # Create transaction
+                        transaction = Transaction(
+                            date=transaction_date,
+                            description=description,
+                            description_translated=translated_description,
+                            money_in=credit,
+                            money_out=debit,
+                            balance=new_balance,
+                            confidence=self._calculate_confidence(
+                                transaction_date, description, credit, debit, new_balance
+                            )
+                        )
+
+                        transactions.append(transaction)
+                        current_balance = new_balance
 
         except Exception as e:
-            logger.error(f"Error parsing Crédit Agricole PDF with pdfplumber: {e}")
+            logger.error(f"Error parsing Crédit Agricole: {e}")
             return []
 
-        logger.info(f"Parsed {len(transactions)} Crédit Agricole transactions using pdfplumber")
+        logger.info(f"Parsed {len(transactions)} Crédit Agricole transactions")
         return transactions
 
     def _build_credit_agricole_transaction(

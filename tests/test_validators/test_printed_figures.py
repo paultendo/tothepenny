@@ -55,3 +55,46 @@ def test_period_break_markers_are_not_rows():
     rows = [row(1, 42.42, 'ACCESSIBLE_PERIOD_BREAK'), row(2, 90.00), row(3, 1340.50)]
     ok, _ = tied_to_printed_figures(printed_figures(STATEMENT), 42.42, 1340.50, rows)
     assert ok
+
+
+def marker(day, balance, kind='BROUGHT'):
+    return SimpleNamespace(date=datetime(2026, day, 1), balance=balance, description=f'BALANCE {kind} FORWARD',
+                           money_in=0.0, money_out=0.0)
+
+
+def entry(day, amount_in, amount_out, balance):
+    return SimpleNamespace(date=datetime(2026, day, 2), balance=balance, description='Payment',
+                           money_in=amount_in, money_out=amount_out)
+
+
+def test_a_result_of_balance_markers_alone_is_refused():
+    # Every "period" is just its own brought-forward line: no row-by-row check can fail, and no money moved.
+    from statement_reconciler.validators.printed_figures import money_is_conserved
+    ok, reason = money_is_conserved(100.00, 175.00, [marker(3, 150.00), marker(2, 120.00), marker(1, 100.00)])
+    assert not ok
+    assert 'brought forward' in reason or 'closing balance' in reason
+
+
+def test_periods_that_carry_their_money_are_conserved():
+    from statement_reconciler.validators.printed_figures import money_is_conserved
+    rows = [marker(1, 100.00), entry(1, 20.00, 0.0, 120.00), marker(1, 120.00, 'CARRIED'),
+            marker(2, 120.00), entry(2, 0.0, 45.00, 75.00)]
+    ok, reason = money_is_conserved(100.00, 75.00, rows)
+    assert ok, reason
+
+
+def test_a_page_opening_printed_after_its_first_entry_is_accepted_when_the_rows_confirm_it():
+    # NatWest prints some page openings after the page's first entry: page 1 ends at 466.27, page 2 says "brought
+    # forward 366.27", and its first entry (-100.00) prints 366.27. The rows are right; the marker is out of place.
+    from statement_reconciler.validators.printed_figures import money_is_conserved
+    rows = [marker(1, 542.59), entry(1, 0.0, 76.32, 466.27), marker(2, 366.27), entry(2, 0.0, 100.00, 366.27),
+            entry(2, 0.0, 58.46, 307.81)]
+    ok, reason = money_is_conserved(542.59, 307.81, rows)
+    assert ok, reason
+
+
+def test_small_print_read_as_payments_breaks_the_chain():
+    from statement_reconciler.validators.printed_figures import money_is_conserved
+    rows = [entry(1, 0.0, 10.00, 90.00), entry(1, 0.0, 2.94, None)]
+    ok, _ = money_is_conserved(100.00, 90.00, rows)
+    assert not ok

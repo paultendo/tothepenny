@@ -25,7 +25,6 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Accounting",
 ]
 dependencies = [
-    "pdfplumber>=0.10.0",
     "pypdfium2>=4.0",
     "pytesseract>=0.3.10",
     "opencv-python>=4.8.0",

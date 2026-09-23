@@ -246,7 +246,6 @@ def test():
     console.print("[cyan]Checking dependencies...[/cyan]")
 
     deps = [
-        ("pdfplumber", "pdfplumber"),
         ("pypdfium2", "pypdfium2"),
         ("pandas", "pandas"),
         ("openpyxl", "openpyxl"),

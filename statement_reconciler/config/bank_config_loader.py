@@ -72,18 +72,14 @@ class BankConfig:
         return self._config.get('currency', 'GBP')
 
     @property
-    def pdfplumber_laparams(self) -> Optional[dict]:
-        """Custom pdfplumber LAParams overrides."""
-        return self._config.get('pdfplumber_laparams')
-
-    @property
-    def pdfplumber_text_kwargs(self) -> Optional[dict]:
-        """Custom keyword args for pdfplumber text extraction (e.g., x_tolerance)."""
-        return self._config.get('pdfplumber_text_kwargs')
+    def text_line_settings(self) -> Optional[dict]:
+        """How the page text is read for this bank, e.g. {'y_tolerance': 1.2}: the points within which words share a
+        line."""
+        return self._config.get('text_line_settings')
 
     @property
     def capture_word_layout(self) -> bool:
-        """Whether to capture pdfplumber word coordinates for downstream parsers."""
+        """Whether to capture word positions for downstream parsers."""
         return bool(self._config.get('capture_word_layout', False))
 
     @property
@@ -102,9 +98,9 @@ class BankConfig:
         return self._config.get('pdf_bbox_strategy')
 
     @property
-    def force_pdfplumber(self) -> bool:
-        """Whether to skip pdftotext and extract via pdfplumber first."""
-        return bool(self._config.get('force_pdfplumber', False))
+    def prefer_page_text(self) -> bool:
+        """Whether to read the plain page text (with word positions) before the laid-out text."""
+        return bool(self._config.get('prefer_page_text', False))
 
     def get(self, key: str, default=None):
         """Get any config value by key."""

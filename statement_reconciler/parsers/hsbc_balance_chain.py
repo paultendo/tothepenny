@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 AMOUNT = r'(?<![\d.,])(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}(?![\d])'
-DATE = re.compile(r'^(\d{2} [A-Z][a-z]{2} \d{2})\s+(.*)$')
+DATE = re.compile(r'^\s{0,3}(\d{2} [A-Z][a-z]{2} \d{2})\s+(.*)$')
 CODE = re.compile(r'^(\s*)(\)\)\)|[A-Z]{2,3})\s{2,}(\S.*)$')
 OUT_CODES = {')))', 'VIS', 'DD', 'SO', 'ATM', 'CHQ', 'DR', 'OBP', 'PIM'}
 IN_CODES = {'CR'}

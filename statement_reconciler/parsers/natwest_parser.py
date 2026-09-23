@@ -574,7 +574,7 @@ class NatWestParser(BaseTransactionParser):
         statement_start_date: Optional[datetime],
         statement_end_date: Optional[datetime]
     ) -> List[Transaction]:
-        """Parse NatWest statements using pdfplumber word layout."""
+        """Parse NatWest statements from the page reader's word positions."""
         if not self.word_layout:
             raise ValueError("Word layout not available for NatWest layout parser")
 

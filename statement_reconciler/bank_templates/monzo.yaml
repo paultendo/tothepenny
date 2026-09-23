@@ -5,8 +5,8 @@
 # https://monzo.com
 
 monzo:
-  # Note: pdftotext extracts Monzo statements better than pdfplumber
-  # Some PDFs have unusual column layouts that pdfplumber misses entirely
+  # Note: Monzo statements read best as laid-out text
+  # Some PDFs have unusual column layouts that plain page text misses entirely
 
   # Bank identification patterns
   identifiers:

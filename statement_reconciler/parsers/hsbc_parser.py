@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class HSBCParser(BaseTransactionParser):
     """Parser for HSBC/first direct bank statements."""
 
-    # Set by the pipeline (TransactionParser.set_pdf_path) so the statement can be read with pdftotext -layout.
+    # Set by the pipeline (TransactionParser.set_pdf_path) so the statement can be read as laid-out text.
     _pdf_path = None
 
     AMOUNT_TOKEN = re.compile(r'^-?\d[\d,]*\.\d{2}$')
@@ -111,7 +111,7 @@ class HSBCParser(BaseTransactionParser):
         statement_start_date: Optional[datetime],
         statement_end_date: Optional[datetime]
     ) -> List[Transaction]:
-        """Original pdftotext-based parser retained as a fallback."""
+        """The original text-based parser, retained as a fallback."""
         lines = text.split('\n')
         transactions = []
 

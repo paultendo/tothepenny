@@ -53,7 +53,7 @@ barclays:
       - money_in
       - balance
 
-    # Column positions (approximate character positions in pdftotext output)
+    # Column positions (approximate character positions in the laid-out text)
     column_boundaries:
       date_start: 0
       date_end: 12

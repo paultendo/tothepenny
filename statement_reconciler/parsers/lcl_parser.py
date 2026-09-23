@@ -25,11 +25,7 @@ from datetime import datetime
 from typing import Optional, List
 from pathlib import Path
 
-try:
-    import pdfplumber
-    HAS_PDFPLUMBER = True
-except ImportError:
-    HAS_PDFPLUMBER = False
+from ..extractors.page_reader import read_pages
 
 from .base_parser import BaseTransactionParser
 from ..models import Transaction
@@ -41,7 +37,7 @@ logger = logging.getLogger(__name__)
 class LCLParser(BaseTransactionParser):
     """Parser for LCL (Crédit Lyonnais) bank statements.
 
-    Uses pdfplumber for table extraction when available,
+    Reads the statement's tables from the page when the PDF is available,
     falls back to text parsing for Vision API extracted text.
     """
 
@@ -57,7 +53,7 @@ class LCLParser(BaseTransactionParser):
         """
         Parse LCL statement transactions.
 
-        Tries pdfplumber table extraction first for native PDFs,
+        Tries table reading from the page first for native PDFs,
         falls back to text parsing for Vision API output.
 
         Args:
@@ -68,25 +64,25 @@ class LCLParser(BaseTransactionParser):
         Returns:
             List of Transaction objects
         """
-        # Try pdfplumber if available and PDF path is set
-        if HAS_PDFPLUMBER and self._pdf_path and Path(self._pdf_path).exists():
+        # Read the tables from the page when the PDF is available
+        if self._pdf_path and Path(self._pdf_path).exists():
             try:
-                logger.info("Using pdfplumber table extraction for LCL statement")
-                return self._parse_with_pdfplumber(statement_start_date, statement_end_date)
+                logger.info("Using table reading from the page for LCL statement")
+                return self._parse_tables(statement_start_date, statement_end_date)
             except Exception as e:
-                logger.warning(f"Pdfplumber extraction failed, falling back to text parsing: {e}")
+                logger.warning(f"Table reading failed, falling back to text parsing: {e}")
 
         # Fall back to text parsing (for Vision API output)
         logger.info("Using text parsing for LCL statement")
         return self._parse_from_text(text, statement_start_date, statement_end_date)
 
-    def _parse_with_pdfplumber(
+    def _parse_tables(
         self,
         statement_start_date: Optional[datetime],
         statement_end_date: Optional[datetime]
     ) -> List[Transaction]:
         """
-        Parse LCL statement using pdfplumber table extraction.
+        Parse LCL statement using table reading from the page.
 
         Similar to Credit Agricole format:
         - Date column
@@ -101,125 +97,124 @@ class LCLParser(BaseTransactionParser):
         current_balance = 0.0
 
         try:
-            with pdfplumber.open(self._pdf_path) as pdf:
-                for page_num, page in enumerate(pdf.pages, 1):
-                    # Extract tables from page
-                    tables = page.extract_tables()
+            for page_num, page in enumerate(read_pages(Path(self._pdf_path)), 1):
+                # The page's tables: rows of cells under each header line
+                tables = page.tables(('date', 'debit', 'credit'))
 
-                    if not tables:
+                if not tables:
+                    continue
+
+                # Process tables
+                for table in tables:
+                    if not table or len(table) < 2:
                         continue
 
-                    # Process tables
-                    for table in tables:
-                        if not table or len(table) < 2:
+                    # Find column indices from header
+                    header = table[0]
+                    date_idx = None
+                    desc_idx = None
+                    debit_idx = None
+                    credit_idx = None
+
+                    for i, col in enumerate(header):
+                        if not col:
+                            continue
+                        col_lower = col.lower().replace('\n', ' ')
+
+                        if 'date' in col_lower and 'valeur' not in col_lower:
+                            date_idx = i
+                        elif 'libellé' in col_lower or 'libelle' in col_lower or 'opération' in col_lower:
+                            desc_idx = i
+                        elif 'débit' in col_lower or 'debit' in col_lower:
+                            debit_idx = i
+                        elif 'crédit' in col_lower or 'credit' in col_lower:
+                            credit_idx = i
+
+                    if desc_idx is None:
+                        continue
+
+                    # Process rows
+                    for row in table[1:]:
+                        if not row or len(row) <= max(filter(None, [date_idx, desc_idx, debit_idx, credit_idx])):
                             continue
 
-                        # Find column indices from header
-                        header = table[0]
-                        date_idx = None
-                        desc_idx = None
-                        debit_idx = None
-                        credit_idx = None
+                        # Extract values
+                        date_str = row[date_idx] if date_idx is not None else None
+                        description = row[desc_idx] if desc_idx is not None else None
+                        debit_str = row[debit_idx] if debit_idx is not None and debit_idx < len(row) else None
+                        credit_str = row[credit_idx] if credit_idx is not None and credit_idx < len(row) else None
 
-                        for i, col in enumerate(header):
-                            if not col:
-                                continue
-                            col_lower = col.lower().replace('\n', ' ')
-
-                            if 'date' in col_lower and 'valeur' not in col_lower:
-                                date_idx = i
-                            elif 'libellé' in col_lower or 'libelle' in col_lower or 'opération' in col_lower:
-                                desc_idx = i
-                            elif 'débit' in col_lower or 'debit' in col_lower:
-                                debit_idx = i
-                            elif 'crédit' in col_lower or 'credit' in col_lower:
-                                credit_idx = i
-
-                        if desc_idx is None:
+                        # Skip empty rows
+                        if not description or not date_str:
+                            # Check for opening balance
+                            if description and 'solde' in description.lower():
+                                if credit_str:
+                                    current_balance = self._parse_french_number(credit_str)
+                                    logger.debug(f"Opening balance: €{current_balance:.2f}")
                             continue
 
-                        # Process rows
-                        for row in table[1:]:
-                            if not row or len(row) <= max(filter(None, [date_idx, desc_idx, debit_idx, credit_idx])):
-                                continue
+                        # Skip summary rows
+                        if any(keyword in description.lower() for keyword in ['total', 'solde', 'page ']):
+                            continue
 
-                            # Extract values
-                            date_str = row[date_idx] if date_idx is not None else None
-                            description = row[desc_idx] if desc_idx is not None else None
-                            debit_str = row[debit_idx] if debit_idx is not None and debit_idx < len(row) else None
-                            credit_str = row[credit_idx] if credit_idx is not None and credit_idx < len(row) else None
+                        # Parse date
+                        date_str = date_str.strip() if date_str else None
+                        if not date_str:
+                            continue
 
-                            # Skip empty rows
-                            if not description or not date_str:
-                                # Check for opening balance
-                                if description and 'solde' in description.lower():
-                                    if credit_str:
-                                        current_balance = self._parse_french_number(credit_str)
-                                        logger.debug(f"Opening balance: €{current_balance:.2f}")
-                                continue
+                        # Parse amounts
+                        debit = self._parse_french_number(debit_str) if debit_str and debit_str.strip() else 0.0
+                        credit = self._parse_french_number(credit_str) if credit_str and credit_str.strip() else 0.0
 
-                            # Skip summary rows
-                            if any(keyword in description.lower() for keyword in ['total', 'solde', 'page ']):
-                                continue
+                        # Clean description
+                        description = ' '.join(description.split()) if description else ""
 
-                            # Parse date
-                            date_str = date_str.strip() if date_str else None
-                            if not date_str:
-                                continue
+                        # Translate to English
+                        translated_description = self._translate_description(description)
 
-                            # Parse amounts
-                            debit = self._parse_french_number(debit_str) if debit_str and debit_str.strip() else 0.0
-                            credit = self._parse_french_number(credit_str) if credit_str and credit_str.strip() else 0.0
+                        # Calculate balance
+                        new_balance = current_balance + credit - debit
 
-                            # Clean description
-                            description = ' '.join(description.split()) if description else ""
-
-                            # Translate to English
-                            translated_description = self._translate_description(description)
-
-                            # Calculate balance
-                            new_balance = current_balance + credit - debit
-
-                            # Parse date
-                            transaction_date = None
-                            if statement_start_date and statement_end_date:
-                                transaction_date = infer_year_from_period(
-                                    date_str,
-                                    statement_start_date,
-                                    statement_end_date,
-                                    self.config.date_formats
-                                )
-                            else:
-                                transaction_date = parse_date(date_str, self.config.date_formats)
-
-                            if not transaction_date:
-                                if looks_like_date(date_str):
-                                    logger.warning(f"Could not parse date: {date_str}")
-                                else:
-                                    logger.debug("Skipping non-date token during LCL parse: %s", date_str)
-                                continue
-
-                            # Create transaction
-                            transaction = Transaction(
-                                date=transaction_date,
-                                description=description,
-                                description_translated=translated_description,
-                                money_in=credit,
-                                money_out=debit,
-                                balance=new_balance,
-                                confidence=self._calculate_confidence(
-                                    transaction_date, description, credit, debit, new_balance
-                                )
+                        # Parse date
+                        transaction_date = None
+                        if statement_start_date and statement_end_date:
+                            transaction_date = infer_year_from_period(
+                                date_str,
+                                statement_start_date,
+                                statement_end_date,
+                                self.config.date_formats
                             )
+                        else:
+                            transaction_date = parse_date(date_str, self.config.date_formats)
 
-                            transactions.append(transaction)
-                            current_balance = new_balance
+                        if not transaction_date:
+                            if looks_like_date(date_str):
+                                logger.warning(f"Could not parse date: {date_str}")
+                            else:
+                                logger.debug("Skipping non-date token during LCL parse: %s", date_str)
+                            continue
+
+                        # Create transaction
+                        transaction = Transaction(
+                            date=transaction_date,
+                            description=description,
+                            description_translated=translated_description,
+                            money_in=credit,
+                            money_out=debit,
+                            balance=new_balance,
+                            confidence=self._calculate_confidence(
+                                transaction_date, description, credit, debit, new_balance
+                            )
+                        )
+
+                        transactions.append(transaction)
+                        current_balance = new_balance
 
         except Exception as e:
-            logger.error(f"Error parsing LCL PDF with pdfplumber: {e}")
+            logger.error(f"Error parsing LCL: {e}")
             return []
 
-        logger.info(f"Parsed {len(transactions)} LCL transactions using pdfplumber")
+        logger.info(f"Parsed {len(transactions)} LCL transactions")
         return transactions
 
     def _parse_from_text(

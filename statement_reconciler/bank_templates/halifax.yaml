@@ -112,8 +112,8 @@ halifax:
 
   # Transaction patterns for regex extraction
   transaction_patterns:
-    # Halifax format with pdftotext -layout: Date, Description, Type, Amount, Balance
-    # pdftotext produces cleaner output with 2+ spaces between columns
+    # Halifax format in laid-out text: Date, Description, Type, Amount, Balance
+    # laid-out text puts 2+ spaces between columns
     # Pattern: date (2+ spaces) description (2+ spaces) type (2+ spaces) amount (2+ spaces) balance
     # Example: "02 Dec 24    DAILY OD INT 30/11    CHG    0.44    -454.25"
     standard: |

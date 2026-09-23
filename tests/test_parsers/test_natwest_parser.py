@@ -47,7 +47,7 @@ def _parse_transactions(filename: str, config) -> list:
     if not file_path.exists():
         pytest.skip("needs a local NatWest statement, which is never distributed with the project")
     extractor = PDFExtractor()
-    text_kwargs = config.pdfplumber_text_kwargs
+    text_kwargs = config.text_line_settings
     text, _, layout = extractor.extract(
         file_path,
         capture_words=True,

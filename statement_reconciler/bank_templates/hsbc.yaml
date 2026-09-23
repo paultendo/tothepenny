@@ -113,7 +113,7 @@ hsbc:
     balance: "balance"
 
   capture_word_layout: true
-  force_pdfplumber: true
+  prefer_page_text: true
 
 # Notes for parser implementation:
 # 1. HSBC uses multi-line descriptions (like NatWest)

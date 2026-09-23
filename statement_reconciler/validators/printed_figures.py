@@ -50,3 +50,61 @@ def tied_to_printed_figures(printed: Set[float], opening: Optional[float], closi
     missing = [name for name, value in (('opening', opening), ('closing', closing)) if not is_printed(value)]
     return False, (f"The {' and '.join(missing)} balance{'s' if len(missing) > 1 else ''} and the running balances "
                    "do not tie to figures printed on the statement, so the result is not proved.")
+
+
+def money_is_conserved(opening: Optional[float], closing: Optional[float], transactions) -> Tuple[bool, str]:
+    """The money read must carry the balance from each printed balance to the next.
+
+    Walk the result as one chain. Between two rows that carry a balance, the money in and out must move the first to
+    the second, and the chain must end on the statement's closing balance. A "brought forward" line either continues
+    the running balance (a page break), starts a new statement (only where the previous one closed on a printed
+    balance with no money read after it), or is a figure printed out of place (NatWest prints some page openings
+    after the page's first entry): the next printed row balance decides which, and an out-of-place reading must be
+    confirmed by a transaction's own balance before the next marker. So a result made only of balance markers, which
+    passes every row-by-row check with not one transaction read, cannot pass this.
+    """
+    rows = list(transactions)
+    opens = lambda t: 'BROUGHT FORWARD' in t.description.upper() or 'PERIOD_BREAK' in t.description.upper()
+    if not rows:
+        return False, 'No transactions were read.'
+    if opens(rows[0]) and rows[0].balance is not None:
+        start, first = rows[0].balance, 1
+    elif opening is not None:
+        start, first = opening, 0
+    else:
+        return False, "The statement's opening balance is unknown, so its movement cannot be checked."
+    # Each reading: (running balance, closed on a printed balance, money since it, awaiting confirmation)
+    readings = {(round(start, 2), True, 0.0, False)}
+    reason = ''
+    for t in rows[first:]:
+        following = set()
+        if opens(t) and t.balance is not None:
+            b = round(t.balance, 2)
+            for running, closed, tail, pending in readings:
+                if pending:
+                    continue  # an out-of-place reading needed a transaction's balance before another marker
+                if abs(running - b) <= 0.01 or (closed and abs(tail) < 0.005):
+                    following.add((b, False, 0.0, False))  # a page carried over, or a new statement
+                following.add((running, closed, tail, True))  # the marker printed out of place
+            if not following:
+                reason = f"The balance read cannot reach the {b:.2f} brought forward."
+        else:
+            for running, closed, tail, pending in readings:
+                moved = round(running + t.money_in - t.money_out, 2)
+                spent = round(tail + t.money_in - t.money_out, 2)
+                if t.balance is None:
+                    following.add((moved, closed, spent, pending))
+                elif abs(moved - t.balance) <= 0.01:
+                    following.add((round(t.balance, 2), True, 0.0, False))
+            if not following:
+                reason = f"The transactions read do not reach the {t.balance:.2f} the statement prints."
+        readings = following
+        if not readings:
+            return False, reason
+    ending = [r for r in readings if not r[3]]
+    if closing is not None:
+        ending = [r for r in ending if abs(r[0] - closing) <= 0.01]
+    if not ending:
+        return False, (f"The transactions read do not end on the closing balance {closing:.2f}."
+                       if closing is not None else 'The balance read ends unconfirmed.')
+    return True, ''

@@ -56,12 +56,12 @@ natwest:
     top: 0
     bottom: null
 
-  pdfplumber_text_kwargs:
+  text_line_settings:
     x_tolerance: 1.0
     y_tolerance: 1.2
 
   capture_word_layout: true
-  force_pdfplumber: true
+  prefer_page_text: true
   
   # Transaction table structure
   table_structure:

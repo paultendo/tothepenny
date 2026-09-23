@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: System packages
-        run: sudo apt-get update && sudo apt-get install -y poppler-utils tesseract-ocr
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
       - name: Install
         run: pip install -e ".[dev]"
       - name: Tests

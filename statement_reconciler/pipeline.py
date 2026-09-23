@@ -18,7 +18,7 @@ import pandas as pd
 
 from .models import ExtractionResult, Statement, Transaction
 from .extractors import PDFExtractor
-from .extractors.pdftotext_extractor import PDFToTextExtractor
+from .extractors.layout_text_extractor import LayoutTextExtractor
 from .parsers import TransactionParser
 from .parsers.universal_layout_parser import UniversalLayoutParser
 from .validators import BalanceValidator
@@ -43,7 +43,7 @@ class ExtractionPipeline:
     Main pipeline for bank statement extraction (ETL pattern).
 
     Phases:
-    1. Extract - Get text from PDF/image (tries pdfplumber, falls back to pdftotext)
+    1. Extract - Get text from a PDF's text layer (the page reader), or by OCR for scans and images
     2. Transform - Parse transactions, validate balances
     3. Load - Export to Excel
 
@@ -55,7 +55,7 @@ class ExtractionPipeline:
     def __init__(self):
         """Initialize pipeline with extractors and parsers."""
         self.pdf_extractor = PDFExtractor()
-        self.pdftotext_extractor = PDFToTextExtractor()
+        self.layout_text_extractor = LayoutTextExtractor()
         self.bank_config_loader = get_bank_config_loader()
         self.validator = BalanceValidator(tolerance=0.01)
         self.exporter = None
@@ -92,7 +92,7 @@ class ExtractionPipeline:
             # Phase 1: EXTRACT
             logger.info("Phase 1: EXTRACT")
             provided_bank_config = None
-            prefer_pdfplumber = False
+            prefer_page_text = False
 
             if bank_name:
                 provided_bank_config = self.bank_config_loader.get_config(bank_name)
@@ -101,11 +101,11 @@ class ExtractionPipeline:
                         f"Unsupported bank: {bank_name}",
                         processing_time=time.time() - start_time
                     )
-                prefer_pdfplumber = provided_bank_config.force_pdfplumber
+                prefer_page_text = provided_bank_config.prefer_page_text
 
             text, extraction_confidence, extraction_method, extraction_data = self._extract_text(
                 file_path,
-                prefer_pdfplumber=prefer_pdfplumber,
+                prefer_page_text=prefer_page_text,
                 force_vision=force_vision
             )
 
@@ -148,7 +148,7 @@ class ExtractionPipeline:
                 )
 
             # Store word_layout for later use
-            word_layout = extraction_data if extraction_method.startswith("pdfplumber") else None
+            word_layout = extraction_data if extraction_method.startswith("page_text") else None
 
             # Phase 2: TRANSFORM
             logger.info("Phase 2: TRANSFORM")
@@ -181,40 +181,34 @@ class ExtractionPipeline:
                                      confidence=result.confidence_score, error=result.error_message)
                 return result
 
-            # 2a.1. Re-extract with pdfplumber if bank config requires custom settings
+            # 2a.1. Re-read the page text if the bank template asks for a crop or line settings
             pdf_bbox = self._resolve_pdf_bbox(file_path, bank_config)
-            pdfplumber_laparams = bank_config.pdfplumber_laparams
-            pdfplumber_text_kwargs = bank_config.pdfplumber_text_kwargs
+            line_settings = bank_config.text_line_settings
             capture_word_layout = bank_config.capture_word_layout
 
-            needs_pdfplumber = any([pdf_bbox, pdfplumber_laparams, pdfplumber_text_kwargs, capture_word_layout])
+            needs_reread = any([pdf_bbox, line_settings, capture_word_layout])
 
-            is_pdf_text_extraction = extraction_method.startswith("pdfplumber") or extraction_method == "pdftotext"
+            is_pdf_text_extraction = extraction_method.startswith("page_text") or extraction_method == "layout_text"
 
-            # Only re-extract with pdfplumber when we're already in a PDF-text path.
-            # For scanned PDFs/images (OCR/Vision), pdfplumber will typically yield empty text and can
+            # Only re-read when we are already on a PDF-text path.
+            # For scanned PDFs/images (OCR), the text layer is typically empty and a re-read can
             # accidentally overwrite valid OCR/Vision output.
-            if needs_pdfplumber and is_pdf_text_extraction and file_path.suffix.lower() == '.pdf':
+            if needs_reread and is_pdf_text_extraction and file_path.suffix.lower() == '.pdf':
                 if pdf_bbox:
-                    logger.info(f"Bank config has pdf_bbox, re-extracting with pdfplumber cropping: {pdf_bbox}")
-                if pdfplumber_laparams:
-                    logger.info(f"Bank config specifies pdfplumber LAParams override: {pdfplumber_laparams}")
-                if pdfplumber_text_kwargs:
-                    logger.info(f"Bank config specifies pdfplumber text extraction kwargs: {pdfplumber_text_kwargs}")
+                    logger.info(f"Bank config has pdf_bbox, re-reading the page text cropped: {pdf_bbox}")
+                if line_settings:
+                    logger.info(f"Bank config specifies text line settings: {line_settings}")
                 try:
                     new_text, new_confidence, layout = self.pdf_extractor.extract(
                         file_path,
                         bbox=pdf_bbox,
-                        laparams=pdfplumber_laparams,
-                        text_kwargs=pdfplumber_text_kwargs,
+                        text_kwargs=line_settings,
                         capture_words=capture_word_layout
                     )
-                    method_parts = ["pdfplumber"]
+                    method_parts = ["page_text"]
                     if pdf_bbox:
                         method_parts.append("bbox")
-                    if pdfplumber_laparams:
-                        method_parts.append("laparams")
-                    if pdfplumber_text_kwargs:
+                    if line_settings:
                         method_parts.append("text")
                     if capture_word_layout:
                         method_parts.append("words")
@@ -225,10 +219,10 @@ class ExtractionPipeline:
                         extraction_confidence = new_confidence
                         extraction_method = "+".join(method_parts)
                         logger.info(
-                            f"✓ Re-extracted with pdfplumber ({' + '.join(method_parts[1:]) if len(method_parts) > 1 else 'default settings'})"
+                            f"✓ Re-read the page text ({' + '.join(method_parts[1:]) if len(method_parts) > 1 else 'default settings'})"
                         )
                     else:
-                        logger.warning("pdfplumber re-extract produced no text; keeping original extraction output")
+                        logger.warning("Cropped re-read produced no text; keeping original extraction output")
                 except Exception as e:
                     logger.warning(f"Bbox re-extraction failed, using original text: {e}")
 
@@ -291,6 +285,11 @@ class ExtractionPipeline:
                         transactions = fallback_txns
                         balance_reconciled = fallback_reconciled
                         warnings = (post_warnings or []) + fallback_warnings
+
+            # Lines after the row that carries the statement's closing balance are not transactions (small print).
+            transactions, trailing_note = self._drop_rows_after_closing(statement, transactions)
+            if trailing_note:
+                warnings = list(warnings) + [trailing_note]
 
             # A reconciled result must tie to figures the bank printed, not only to itself.
             if balance_reconciled:
@@ -390,7 +389,7 @@ class ExtractionPipeline:
     def _extract_text(
         self,
         file_path: Path,
-        prefer_pdfplumber: bool = False,
+        prefer_page_text: bool = False,
         force_vision: bool = False
     ) -> tuple[str, float, str, Optional[list]]:
         """
@@ -398,7 +397,7 @@ class ExtractionPipeline:
 
         Args:
             file_path: Path to statement file
-            prefer_pdfplumber: If True, try pdfplumber before pdftotext
+            prefer_page_text: If True, read plain page text (with word positions) before the laid-out text
             force_vision: Deprecated; cloud Vision API extraction is disabled
 
         Returns:
@@ -406,26 +405,24 @@ class ExtractionPipeline:
         """
         logger.info(f"Extracting text from: {file_path.name}")
 
-        def run_pdfplumber():
+        def run_page_text():
             try:
                 text, confidence, layout = self.pdf_extractor.extract(file_path)
                 if text:
-                    logger.info("✓ pdfplumber extraction successful")
-                    return text, confidence, "pdfplumber", layout
+                    logger.info("✓ Page text read")
+                    return text, confidence, "page_text", layout
             except Exception as exc:  # noqa: BLE001
-                logger.warning(f"pdfplumber extraction failed: {exc}")
+                logger.warning(f"Page text reading failed: {exc}")
             return None
 
-        def run_pdftotext():
+        def run_layout_text():
             try:
-                text, confidence = self.pdftotext_extractor.extract(file_path)
+                text, confidence = self.layout_text_extractor.extract(file_path)
                 if text:
-                    logger.info("✓ pdftotext extraction successful")
-                    return text, confidence, "pdftotext", None
-            except RuntimeError as exc:
-                logger.warning(f"pdftotext not available: {exc}")
+                    logger.info("✓ Layout text read")
+                    return text, confidence, "layout_text", None
             except Exception as exc:  # noqa: BLE001
-                logger.warning(f"pdftotext extraction failed: {exc}")
+                logger.warning(f"Layout text reading failed: {exc}")
             return None
 
         def run_ocr():
@@ -451,18 +448,9 @@ class ExtractionPipeline:
 
         # Try PDF text extraction (native PDFs only)
         if file_path.suffix.lower() == '.pdf':
-            if prefer_pdfplumber:
-                result = run_pdfplumber()
-                if result:
-                    return result
-                result = run_pdftotext()
-                if result:
-                    return result
-            else:
-                result = run_pdftotext()
-                if result:
-                    return result
-                result = run_pdfplumber()
+            first, second = (run_page_text, run_layout_text) if prefer_page_text else (run_layout_text, run_page_text)
+            for attempt in (first, second):
+                result = attempt()
                 if result:
                     return result
 
@@ -496,12 +484,6 @@ class ExtractionPipeline:
             logger.warning(f"Unsupported pdf_bbox_strategy type: {strategy_type}")
             return None
 
-        try:
-            import pdfplumber
-        except ImportError as exc:
-            logger.warning(f"pdfplumber not available for dynamic bbox: {exc}")
-            return None
-
         margin = strategy.get('margin', 10)
         x0 = strategy.get('x0', 0)
         top = strategy.get('top', 0)
@@ -511,12 +493,8 @@ class ExtractionPipeline:
         max_page_width = 0.0
 
         try:
-            from .extractors.page_reader import own_reader_enabled, read_pages
-            if own_reader_enabled():
-                layout = [(page.width, page.words) for page in read_pages(file_path)]
-            else:
-                with pdfplumber.open(file_path) as pdf:
-                    layout = [(page.width, page.extract_words(x_tolerance=1.0, use_text_flow=True)) for page in pdf.pages]
+            from .extractors.page_reader import read_pages
+            layout = [(page.width, page.words) for page in read_pages(file_path)]
             for width, words in layout:
                 max_page_width = max(max_page_width, width)
                 for word in words:
@@ -895,10 +873,30 @@ class ExtractionPipeline:
 
         return earliest, latest
 
+    @staticmethod
+    def _drop_rows_after_closing(statement: Statement, transactions: list) -> Tuple[list, str]:
+        """Where the statement prints balances, its last transaction carries the closing balance, so rows after the
+        last row with a balance are small print read as transactions. They are left out only when that balance is the
+        statement's closing balance: the bank's own figure then shows nothing moved after it."""
+        markers = [t for t in transactions[1:] if 'BROUGHT FORWARD' in t.description.upper()
+                   or 'PERIOD_BREAK' in t.description.upper()]
+        if markers or statement.closing_balance is None:
+            return transactions, ''
+        last = max((i for i, t in enumerate(transactions) if t.balance is not None), default=None)
+        if last is None or last == len(transactions) - 1:
+            return transactions, ''
+        if abs(transactions[last].balance - statement.closing_balance) > 0.005:
+            return transactions, ''
+        dropped = len(transactions) - 1 - last
+        logger.info("Leaving out %d line(s) after the closing balance", dropped)
+        return transactions[:last + 1], (f"{dropped} line{'s' if dropped > 1 else ''} after the closing balance "
+                                         f"{'were' if dropped > 1 else 'was'} small print, not transactions, and "
+                                         f"{'were' if dropped > 1 else 'was'} left out.")
+
     def _require_printed_figures(self, file_path: Path, text: str, statement: Statement, transactions: list,
                                  warnings: list) -> Tuple[bool, list]:
         """Keep a reconciled verdict only if the balances tie to figures printed on the statement."""
-        from .validators.printed_figures import printed_figures, tied_to_printed_figures
+        from .validators.printed_figures import money_is_conserved, printed_figures, tied_to_printed_figures
         texts = [text]
         if file_path.suffix.lower() == '.pdf':
             try:
@@ -908,6 +906,8 @@ class ExtractionPipeline:
                 logger.debug("Laid-out text unavailable for the printed-figure check (%s)", exc)
         ok, reason = tied_to_printed_figures(printed_figures(*texts), statement.opening_balance,
                                              statement.closing_balance, transactions)
+        if ok:
+            ok, reason = money_is_conserved(statement.opening_balance, statement.closing_balance, transactions)
         if ok:
             return True, warnings
         logger.warning(reason)

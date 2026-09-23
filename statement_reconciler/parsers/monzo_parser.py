@@ -638,7 +638,7 @@ class MonzoTransactionParser(BaseTransactionParser):
         """
         Detect if the PDF section uses columnar format.
 
-        In TRUE columnar format, pdftotext extracts columns separately:
+        In TRUE columnar format, laid-out text shows the columns separately:
         1. Date column: All dates listed vertically (DD/MM/Y + year-digit pairs)
         2. Description header appears AFTER all dates
         3. Amount/Balance headers after that

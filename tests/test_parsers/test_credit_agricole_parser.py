@@ -18,19 +18,8 @@ class _DummyPage:
     def __init__(self, tables):
         self._tables = tables
 
-    def extract_tables(self):
+    def tables(self, _labels):
         return self._tables
-
-
-class _DummyPDF:
-    def __init__(self, pages):
-        self.pages = pages
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
 
 
 @pytest.fixture(scope="module")
@@ -52,16 +41,12 @@ def test_credit_agricole_balance_markers(monkeypatch, credit_agricole_config):
 
     dummy_pages = [_DummyPage([table])]
 
-    def _dummy_open(_path):
-        return _DummyPDF(dummy_pages)
-
-    monkeypatch.setattr(credit_agricole_parser, "HAS_PDFPLUMBER", True)
-    monkeypatch.setattr(credit_agricole_parser.pdfplumber, "open", _dummy_open)
+    monkeypatch.setattr(credit_agricole_parser, "read_pages", lambda _path: dummy_pages)
 
     parser = CreditAgricoleParser(credit_agricole_config)
     parser._pdf_path = Path("dummy.pdf")
 
-    transactions = parser._parse_with_pdfplumber(
+    transactions = parser._parse_tables(
         datetime(2025, 9, 1),
         datetime(2025, 10, 1)
     )

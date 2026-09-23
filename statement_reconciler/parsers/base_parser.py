@@ -163,7 +163,7 @@ class BaseTransactionParser(ABC):
     -----------------------
 
     1. Layout A vs Layout B Transactions:
-       When using pdftotext -layout, transactions may appear in two formats:
+       In laid-out text, transactions may appear in two formats:
 
        Layout A (all on one line):
          "16/08/2024    MERCHANT NAME    -93.58    6.98"
@@ -692,7 +692,7 @@ class BaseTransactionParser(ABC):
         this method filters out the foreign currency amounts to prevent them
         from being parsed as GBP transaction amounts.
 
-        This is commonly needed when using pdftotext -layout flag, which
+        This is commonly needed with laid-out text, which
         preserves the visual layout and can place FX metadata and GBP amounts
         on the same line.
 
@@ -751,7 +751,7 @@ class BaseTransactionParser(ABC):
         """
         Extract amounts from date line remainder (Layout A pattern).
 
-        When using pdftotext -layout, some banks format transactions with
+        In laid-out text, some banks format transactions with
         all data on one line after the date prefix:
 
         "16/08/202        MERCHANT NAME        -93.58        6.98"

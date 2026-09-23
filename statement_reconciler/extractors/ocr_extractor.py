@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover
     Output = None
 
 try:
-    import pypdfium2 as pdfium  # Apache-2.0 / BSD; ships with pdfplumber
+    import pypdfium2 as pdfium  # Apache-2.0 / BSD; a direct dependency
 except ImportError:  # pragma: no cover
     pdfium = None
 

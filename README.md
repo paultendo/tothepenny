@@ -32,7 +32,8 @@ New banks and layouts are the most useful contribution; see [CONTRIBUTING.md](CO
 
 ## Install
 
-Requires Python 3.10+, Poppler (`pdftotext`) and, for scanned statements, Tesseract.
+Requires Python 3.10+ and, for scanned statements, Tesseract. PDFs are read with pdfium (via pypdfium2), which
+installs with the package.
 
 ```bash
 pip install -e .
