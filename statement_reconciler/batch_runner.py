@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional, Sequence, TYPE_CHECKING
 
+from .utils.spreadsheet_safety import csv_safe
 from .pipeline import ExtractionPipeline
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -229,7 +230,7 @@ def write_batch_report_csv(summary: BatchRunSummary, report_path: Path) -> None:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for result in summary.results:
-            writer.writerow({
+            writer.writerow({key: csv_safe(value) for key, value in {
                 'file': result.file,
                 'bank': result.bank or '',
                 'success': result.success,
@@ -242,7 +243,7 @@ def write_batch_report_csv(summary: BatchRunSummary, report_path: Path) -> None:
                 'processing_time': result.processing_time or '',
                 'output': result.output,
                 'json': result.json or '',
-            })
+            }.items()})
 
 
 def _pdf_has_text(file_path: Path, max_pages: int = 2) -> bool:

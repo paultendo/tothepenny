@@ -10,6 +10,7 @@ Generates Excel workbook with 3 sheets:
 3. Extraction Log - Audit trail and confidence scores
 """
 import logging
+from ..utils.spreadsheet_safety import neutralise_formulas
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -88,6 +89,7 @@ class ExcelExporter:
 
         # Save workbook
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        neutralise_formulas(wb)
         wb.save(output_path)
         logger.info(f"Excel export complete: {output_path}")
 
