@@ -59,3 +59,22 @@ def test_entries_after_the_last_printed_balance_are_not_trusted():
     r = read_chain(trailing)
     assert not r.reconciled
     assert 'last printed balance' in r.reason
+
+
+def test_foreign_currency_figures_in_the_description_are_not_amounts():
+    foreign = f"""{HEADER}
+                        BALANCE BROUGHT FORWARD                                                                  50.00
+03 Nov 25       VIS     INT'L 0012345678
+                        EXAMPLE APP CO
+                        USD 10.00 @ 1.3315
+                        Visa Rate                               7.51
+                DR      Non-Sterling
+                        Transaction Fee                         0.20                                             42.29
+"""
+    r = read_chain(foreign)
+    assert r.reconciled, r.reason
+    assert [(e.code, e.amount, e.direction, e.balance) for e in r.entries] == [
+        ('VIS', 7.51, 'out', 42.49),
+        ('DR', 0.20, 'out', 42.29),
+    ]
+    assert 'USD 10.00 @ 1.3315' in ' '.join(r.entries[0].description)

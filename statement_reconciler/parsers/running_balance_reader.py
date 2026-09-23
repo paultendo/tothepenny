@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-AMOUNT = r'-?£?\d{1,3}(?:,\d{3})*\.\d{2}(?:\s?(?:CR|DR|D|OD)\b)?-?'
+AMOUNT = r'-?£?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}(?:\s?(?:CR|DR|D|OD)\b)?-?'
 AMOUNT_RE = re.compile(AMOUNT)
 DATE_RE = re.compile(r'^\s{0,6}(\d{1,2}\s+[A-Z][a-z]{2}(?:[a-z]*)?(?:\s+\d{2,4})?)\b')
 OPENING_RE = re.compile(r'\b(start balance|balance brought forward|brought forward|opening balance|previous balance|balance from previous)\b', re.I)
@@ -118,8 +118,9 @@ def read_running_balance(text: str) -> RunningBalanceResult:
         if not line.strip():
             continue
         # An accessible statement names each block's column outright: "Money Out (£)  Balance (£)".
+        # A block heading names one money column only; a table heading naming both is not a block.
         block = re.search(r'money\s+(in|out)\s+\(£\)\s+balance\s+\(£\)', line, re.I)
-        if block:
+        if block and len(re.findall(r'money\s+(?:in|out)\s+\(£\)', line, re.I)) == 1:
             block_direction = block.group(1).lower()
             continue
         is_heading = bool(HEADER_RE.search(line) and re.search(r'\b(date)\b', line, re.I) and re.search(r'\b(money|paid|out|in|debit|credit|payments?)\b', line, re.I))
@@ -157,7 +158,9 @@ def read_running_balance(text: str) -> RunningBalanceResult:
             continue
         if table_right is None:
             continue
-        amounts = _table_amounts(line, table_right, money_left)
+        # In an accessible statement each block sits at its own position; once its heading has named the column, the
+        # line's last two figures are its amount and balance wherever they fall.
+        amounts = _table_amounts(line, table_right + 40, 0)[-2:] if block_direction else _table_amounts(line, table_right, money_left)
         if OPENING_RE.search(line) and amounts:
             value = _money(amounts[-1][0])
             if unchecked:

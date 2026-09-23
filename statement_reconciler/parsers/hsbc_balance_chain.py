@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-AMOUNT = r'\d{1,3}(?:,\d{3})*\.\d{2}'
+AMOUNT = r'(?<![\d.,])(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}(?![\d])'
 DATE = re.compile(r'^(\d{2} [A-Z][a-z]{2} \d{2})\s+(.*)$')
 CODE = re.compile(r'^(\s*)(\)\)\)|[A-Z]{2,3})\s{2,}(\S.*)$')
 OUT_CODES = {')))', 'VIS', 'DD', 'SO', 'ATM', 'CHQ', 'DR', 'OBP', 'PIM'}
@@ -69,12 +69,14 @@ def read_chain(text: str) -> ChainResult:
     current: Optional[Entry] = None
     balance_end: Optional[int] = None
     columns: Optional[Tuple[float, float]] = None
+    money_left = 0  # figures ending left of the money columns are part of a description ("USD 10.00 @ 1.3315")
     in_table = False
 
     for line in text.split('\n'):
         out_head, in_head = PAID_OUT.search(line), PAID_IN.search(line)
         if out_head and in_head:
             columns = ((out_head.start() + out_head.end()) / 2, (in_head.start() + in_head.end()) / 2)
+            money_left = out_head.start() - 10
             continue
         brought = re.search(r'BALANCE BROUGHT FORWARD.*?(' + AMOUNT + r')(\s+D)?\s*$', line)
         if brought:
@@ -97,16 +99,16 @@ def read_chain(text: str) -> ChainResult:
             rest = ' ' * (len(line) - len(dated.group(2))) + dated.group(2)
         coded = CODE.match(rest)
         numbers = [((('-' if m.group(1) else '') + m.group(0).split()[0]), m.end())
-                   for m in re.finditer(AMOUNT + r'(\s+D\b)?', line)]
+                   for m in re.finditer(AMOUNT + r'(\s+D\b)?', line) if m.end() >= money_left]
         if coded and coded.group(2) in CODES:
             current = Entry(date=date, code=coded.group(2))
             entries.append(current)
-            body = coded.group(3)
+            body, offset = coded.group(3), coded.start(3)
         else:
-            body = rest.strip()
+            body, offset = rest.strip(), len(rest) - len(rest.lstrip())
         if current is None:
             continue
-        words = re.sub(AMOUNT + r'(\s+D\b)?', '', body).strip(' .')
+        words = re.sub(AMOUNT + r'(\s+D\b)?', lambda m: '' if offset + m.end() >= money_left else m.group(0), body).strip(' .')
         if words:
             current.description.append(re.sub(r'\s+', ' ', words))
         for value, end in numbers:

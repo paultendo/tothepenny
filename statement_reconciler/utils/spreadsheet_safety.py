@@ -10,7 +10,17 @@ formulas in CSV files too. Nothing this tool exports is meant to be a formula, s
 
 from __future__ import annotations
 
+import re
+
 FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def clean_text(value):
+    """Replace control characters (which a PDF's text can carry, and which a workbook cannot hold) with a space."""
+    if isinstance(value, str):
+        return CONTROL_CHARACTERS.sub(" ", value)
+    return value
 
 
 def neutralise_formulas(workbook) -> int:

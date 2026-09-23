@@ -25,6 +25,15 @@ from .validators import BalanceValidator
 from .exporters import ExcelExporter, generate_output_filename
 from .config import get_bank_config_loader, BankConfig
 from .utils import setup_logger, log_extraction_audit
+from .utils.spreadsheet_safety import clean_text
+
+
+def _clean_result_text(result: ExtractionResult) -> None:
+    """A statement's text can carry control characters that no workbook can hold; replace them before export."""
+    for item in [result.statement, *result.transactions]:
+        for name, value in vars(item).items():
+            if isinstance(value, str):
+                setattr(item, name, clean_text(value))
 
 logger = setup_logger()
 
@@ -319,6 +328,7 @@ class ExtractionPipeline:
             )
 
             # Phase 3: LOAD
+            _clean_result_text(result)
             logger.info("Phase 3: LOAD (Export)")
             if output_path is None:
                 output_path = generate_output_filename(
@@ -876,6 +886,12 @@ class ExtractionPipeline:
 
     def _read_by_running_balance(self, file_path: Path, statement: Statement) -> list:
         from .parsers.running_balance_reader import layout_text, read_running_balance, to_date
+        accessible = self._read_accessible(file_path, statement)
+        if accessible:
+            return accessible
+        exported = self._read_export(file_path, statement)
+        if exported:
+            return exported
         try:
             result = read_running_balance(layout_text(file_path))
         except Exception as exc:  # noqa: BLE001
@@ -894,6 +910,73 @@ class ExtractionPipeline:
             transactions.append(Transaction(
                 date=to_date(row.date_text, statement.statement_start_date, statement.statement_end_date),
                 description=' '.join(row.description).strip() or 'Transaction',
+                money_in=row.amount if row.direction == 'in' else 0.0,
+                money_out=row.amount if row.direction == 'out' else 0.0,
+                balance=row.balance,
+                confidence=100.0,
+            ))
+        return transactions
+
+    def _read_export(self, file_path: Path, statement: Statement) -> list:
+        """Statements with a balance on every dated row, often newest first (online exports, Monzo)."""
+        from .parsers.online_export_reader import looks_like_export, read_export
+        from .parsers.running_balance_reader import layout_text
+        try:
+            text = layout_text(file_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Export reader unavailable (%s)", exc)
+            return []
+        if not looks_like_export(text):
+            return []
+        result = read_export(text)
+        if not result.reconciled:
+            logger.info("Export reader did not reconcile (%s)", result.reason)
+            return []
+        self._running_balance_flips = 0
+        statement.opening_balance = result.opening
+        statement.closing_balance = result.closing
+        if statement.statement_start_date is None:
+            statement.statement_start_date = result.rows[0].date
+        if statement.statement_end_date is None:
+            statement.statement_end_date = result.rows[-1].date
+        return [Transaction(
+            date=row.date,
+            description=' '.join(row.description).strip() or 'Transaction',
+            money_in=row.amount if row.direction == 'in' else 0.0,
+            money_out=row.amount if row.direction == 'out' else 0.0,
+            balance=row.balance,
+            confidence=100.0,
+        ) for row in result.rows]
+
+    def _read_accessible(self, file_path: Path, statement: Statement) -> list:
+        """Accessible (screen-reader tagged) statements: every record names its direction and balance."""
+        from .parsers.accessible_statement_reader import content_text, looks_accessible, read_accessible
+        from .parsers.running_balance_reader import to_date
+        try:
+            text = content_text(file_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Accessible reader unavailable (%s)", exc)
+            return []
+        if not looks_accessible(text):
+            return []
+        result = read_accessible(text)
+        if not result.reconciled:
+            logger.info("Accessible reader did not reconcile (%s)", result.reason)
+            return []
+        self._running_balance_flips = 0
+        combined = sum(1 for row in result.rows if row.period_opening is not None) > 1
+        statement.opening_balance = result.opening
+        statement.closing_balance = result.closing
+        transactions = []
+        for row in result.rows:
+            date = to_date(row.date_text, statement.statement_start_date, statement.statement_end_date)
+            if combined and row.period_opening is not None:
+                # A combined file: each statement's chain starts again from its own opening balance.
+                transactions.append(Transaction(date=date, description="ACCESSIBLE_PERIOD_BREAK", money_in=0.0,
+                                                money_out=0.0, balance=row.period_opening, confidence=100.0))
+            transactions.append(Transaction(
+                date=date,
+                description=f"{row.description} {row.kind}".strip(),
                 money_in=row.amount if row.direction == 'in' else 0.0,
                 money_out=row.amount if row.direction == 'out' else 0.0,
                 balance=row.balance,
@@ -1658,6 +1741,7 @@ class ExtractionPipeline:
         )
 
         # Phase 3: LOAD
+        _clean_result_text(result)
         logger.info("Phase 3: LOAD (Export)")
         if output_path is None:
             output_path = generate_output_filename(
