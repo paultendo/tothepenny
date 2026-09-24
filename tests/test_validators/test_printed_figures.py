@@ -48,7 +48,7 @@ def test_balances_that_exist_only_in_our_own_arithmetic_are_refused():
     # Calculated balances and a derived opening and closing agree with each other and with nothing on the page.
     ok, reason = tied_to_printed_figures(printed_figures(STATEMENT), 200.00, 1440.50, [row(2, 190.00), row(3, 1440.50)])
     assert not ok
-    assert 'not proved' in reason
+    assert 'does not reconcile' in reason
 
 
 def test_period_break_markers_are_not_rows():
