@@ -228,21 +228,42 @@ def write_manifest(summary: BatchRunSummary, manifest_path: Path) -> None:
 
 
 ALL_TRANSACTIONS_FIELDS = ['Date', 'Account', 'Source file', 'Source page', 'Description', 'Paid In', 'Withdrawn',
-                           'Balance']
+                           'Balance', 'Matched transfer']
 
 
-def write_all_transactions_csv(summary: BatchRunSummary, path: Path) -> int:
+def write_all_transactions_csv(summary: BatchRunSummary, path: Path, transfers_path: Optional[Path] = None) -> tuple:
     """Every transaction of every reconciled statement, in date order, each citing its file and page: the combined
-    dataset the analysis reads. Statements that did not reconcile are left out (the batch report lists them)."""
+    dataset the analysis reads. Statements that did not reconcile are left out (the batch report lists them), and a
+    statement supplied twice is counted once (the coverage report lists duplicates). Transfers between accounts in the set are matched and each side names the other (see transfers.py).
+    Returns (transactions written, transfers matched)."""
     import csv
-    rows = [r for result in summary.results for r in result.rows]
+    from .transfers import cite, match_transfers, write_transfers_csv
+    # A statement supplied twice (same account, period, balances and entries) is counted once.
+    seen, kept = set(), []
+    for result in summary.results:
+        if not result.rows:
+            continue
+        key = (result.account, result.period_start, result.period_end, result.opening, result.closing,
+               len(result.rows)) if result.account else (result.file,)
+        if key in seen:
+            logger.info("%s repeats a statement already included; counted once", result.file)
+            continue
+        seen.add(key)
+        kept.append(result)
+    rows = [dict(r, **{'Matched transfer': ''}) for result in kept for r in result.rows]
     rows.sort(key=lambda r: (r['Account'], r['Date'], r['Source file']))
+    pairs = match_transfers(rows)
+    for pair in pairs:
+        pair['out']['Matched transfer'] = f"to {cite(pair['in'])}"
+        pair['in']['Matched transfer'] = f"from {cite(pair['out'])}"
+    if transfers_path is not None:
+        write_transfers_csv(pairs, transfers_path)
     with path.open('w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=ALL_TRANSACTIONS_FIELDS)
         writer.writeheader()
         for r in rows:
             writer.writerow({k: csv_safe(r[k]) for k in ALL_TRANSACTIONS_FIELDS})
-    return len(rows)
+    return len(rows), len(pairs)
 
 
 def write_batch_report_csv(summary: BatchRunSummary, report_path: Path) -> None:
