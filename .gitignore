@@ -4,6 +4,7 @@
 *.xlsx
 *.csv
 *.png
+!docs/images/*.png
 *.jpg
 *.jpeg
 *.tif
