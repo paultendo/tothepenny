@@ -289,7 +289,8 @@ function stats() {
   const gaps = r.issues.filter((i) => i.kind === 'missing period' || i.kind === 'balance jump').length;
   return el('div', { class: 'stats' },
     el('span', { class: 'stat', title: "Statements whose transactions add up to the balances the bank printed" },
-      ring(reconciled, r.statements.length), el('b', {}, `${reconciled}/${r.statements.length}`), 'reconciled'),
+      reconciled === r.statements.length ? GLYPH.done() : ring(reconciled, r.statements.length),
+      el('b', {}, `${reconciled}/${r.statements.length}`), 'reconciled'),
     el('span', { class: 'stat' }, el('b', {}, count(r.transactions)), 'transactions'),
     el('span', { class: `stat${gaps ? ' warn' : ''}`, title: 'Places where one statement does not lead into the next for the same account' },
       el('b', {}, String(gaps)), gaps === 1 ? 'gap' : 'gaps'),
@@ -342,7 +343,9 @@ function body() {
   if (!state.files.length) return [empty()];
   const done = state.files.filter((f) => f.status === 'done' && f.row);
   const working = state.files.filter((f) => !(f.status === 'done' && f.row));
-  const reconciled = done.filter((f) => f.row.reconciled);
+  // In account order, then by date: a year of statements reads as a year
+  const reconciled = done.filter((f) => f.row.reconciled)
+    .sort((a, b) => (a.row.account || '').localeCompare(b.row.account || '') || (a.row.from || '').localeCompare(b.row.from || ''));
   const not = done.filter((f) => !f.row.reconciled);
   const issues = state.result && !state.busy ? state.result.issues : [];
   return [

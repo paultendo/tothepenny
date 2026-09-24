@@ -49,7 +49,7 @@ def tied_to_printed_figures(printed: Set[float], opening: Optional[float], closi
         return True, ''
     missing = [name for name, value in (('opening', opening), ('closing', closing)) if not is_printed(value)]
     return False, (f"The {' and '.join(missing)} balance{'s' if len(missing) > 1 else ''} and the running balances "
-                   "do not tie to figures printed on the statement, so the result is not proved.")
+                   "do not tie to figures printed on the statement, so the result does not reconcile.")
 
 
 def money_is_conserved(opening: Optional[float], closing: Optional[float], transactions) -> Tuple[bool, str]:
