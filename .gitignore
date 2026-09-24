@@ -30,3 +30,5 @@ htmlcov/
 # Environment
 .env
 .DS_Store
+web/vendor/
+web/dist/

@@ -9,4 +9,4 @@ labels: bug
 - What you ran:
 - What you expected:
 - What happened (error message, or the batch_report.csv row with any personal details removed):
-- Version (`pip show statement-reconciler`) and operating system:
+- Version (`pip show tothepenny`) and operating system:

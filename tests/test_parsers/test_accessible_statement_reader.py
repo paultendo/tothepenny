@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for the accessible-statement reader. All statement text is synthetic, in the content order such PDFs give."""
 from __future__ import annotations
 
-from statement_reconciler.parsers.accessible_statement_reader import looks_accessible, read_accessible
+from tothepenny.parsers.accessible_statement_reader import looks_accessible, read_accessible
 
 
 def record(date, description, kind, money_in, money_out, balance):

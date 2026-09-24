@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# PagSeguro Bank Configuration
+# Brazilian digital bank (Banco PagSeguro Internet S/A)
+
+pagseguro:
+  # Bank identification patterns
+  identifiers:
+    - "PagSeguro Internet"
+    - "290 - PagSeguro Internet S/A"
+    - "Extrato da conta"
+    - "pagseguro.com.br"
+
+  # Header patterns for metadata extraction
+  header_patterns:
+    # Account holder - e.g., "Jane Example"
+    account_holder: "^([A-ZÀÁÂÃÇÉÊÍÓÔÕÚ][a-zàáâãçéêíóôõú]+(?:\\s+[A-ZÀÁÂÃÇÉÊÍÓÔÕÚ][a-zàáâãçéêíóôõú]+)+)$"
+    # CPF - e.g., "CPF: 123.456.789-00"
+    account_number: "CPF:\\s*([\\d.-]+)"
+    # Conta - e.g., "Conta 12345678-9"
+    account_id: "Conta\\s+([\\d-]+)"
+    # Agência - e.g., "Agência 0001"
+    branch: "Agência\\s+(\\d+)"
+    # Statement date - e.g., "Emitido em: 14/08/2025 às 10:55"
+    statement_date: "Emitido em:\\s+(\\d{2}/\\d{2}/\\d{4})"
+    # Period - e.g., "Periodo: 01/03/2025 a 14/08/2025"
+    period_start: "Periodo:\\s+(\\d{2}/\\d{2}/\\d{4})"
+    period_end: "Periodo:\\s+\\d{2}/\\d{2}/\\d{4}\\s+a\\s+(\\d{2}/\\d{2}/\\d{4})"
+
+  # Date formats used in PagSeguro statements
+  date_formats:
+    - "%d/%m/%Y"  # Brazilian format: 02/03/2025
+
+  # Currency
+  currency: "BRL"  # Brazilian Real
+
+  # Transaction markers
+  transaction_markers:
+    start: "Data Descrição Valor"
+    balance_marker: "Saldo do dia"
+
+  # Validation rules
+  validation:
+    # Balance tolerance for reconciliation (in BRL)
+    balance_tolerance: 0.01
+    # Require at least one transaction
+    min_transactions: 1

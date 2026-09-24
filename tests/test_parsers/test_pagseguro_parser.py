@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Regression tests for PagSeguro parsing edge cases."""
 from __future__ import annotations
@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from statement_reconciler.config import get_bank_config_loader
-from statement_reconciler.extractors import page_reader
-from statement_reconciler.parsers.pagseguro_parser import PagSeguroParser
+from tothepenny.config import get_bank_config_loader
+from tothepenny.extractors import page_reader
+from tothepenny.parsers.pagseguro_parser import PagSeguroParser
 
 
 class _DummyPage:

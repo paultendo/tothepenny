@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for date parsing utilities."""
 from datetime import datetime
 
-from statement_reconciler.utils.date_parser import infer_year_from_period
+from tothepenny.utils.date_parser import infer_year_from_period
 
 
 def test_infer_year_from_period_cross_year_without_explicit_year():

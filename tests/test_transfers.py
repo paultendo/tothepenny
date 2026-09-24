@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for matching transfers between accounts in a set (24 September 2026). All data is synthetic."""
 from __future__ import annotations
 
-from statement_reconciler.transfers import match_transfers
+from tothepenny.transfers import match_transfers
 
 
 def row(account, day, description, paid_in='', withdrawn='', page=1):

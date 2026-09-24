@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Pytest configuration and fixtures."""
 import pytest
 from pathlib import Path
 from datetime import datetime
 
-from statement_reconciler.models import Transaction, Statement, ExtractionResult, TransactionType
+from tothepenny.models import Transaction, Statement, ExtractionResult, TransactionType
 
 
 @pytest.fixture

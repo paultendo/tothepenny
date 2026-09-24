@@ -16,7 +16,7 @@ Contributions are welcome, especially support for new banks and new statement la
 
 ## The one rule
 
-**A statement is either proved against the bank's own figures or it is not accepted.** A parser's output must
+**A statement either reconciles with the bank's own figures or its transactions are left out.** A parser's output must
 reconcile to the statement's printed balances: opening balance plus money in minus money out equals the closing
 balance, and where the bank prints running or day-end balances, every one of those must be met too. Where it cannot
 reconcile, the tool says so rather than returning a plausible guess. Please keep it that way.
@@ -25,9 +25,9 @@ reconcile, the tool says so rather than returning a plausible guess. Please keep
 
 Each bank has two parts:
 
-1. **A template** in `statement_reconciler/bank_templates/<bank>.yaml`: how to recognise the bank and read its header
+1. **A template** in `tothepenny/bank_templates/<bank>.yaml`: how to recognise the bank and read its header
    fields (period, opening and closing balances, totals).
-2. **A parser** in `statement_reconciler/parsers/<bank>_parser.py`, when the generic parser is not enough. Decide
+2. **A parser** in `tothepenny/parsers/<bank>_parser.py`, when the generic parser is not enough. Decide
    money in and money out from the bank's balances wherever the statement prints them, not from column positions
    alone. Column positions vary across pages and between layouts.
 
@@ -44,7 +44,7 @@ folders, but it is your responsibility.
 
 ## Licence
 
-statement-reconciler is dual-licensed: AGPL-3.0 and commercial. See [COMMERCIAL.md](COMMERCIAL.md). The
+tothepenny is dual-licensed: AGPL-3.0 and commercial. See [COMMERCIAL.md](COMMERCIAL.md). The
 Contributor Licence Agreement is what allows your contribution to be included in both. You keep the copyright in
 your contribution.
 

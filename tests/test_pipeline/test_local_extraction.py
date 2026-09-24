@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Regression checks for local-only default extraction."""
 import builtins
 from pathlib import Path
 import pytest
-from statement_reconciler.pipeline import ExtractionPipeline
-from statement_reconciler.extractors.ocr_extractor import OCRExtractor
+from tothepenny.pipeline import ExtractionPipeline
+from tothepenny.extractors.ocr_extractor import OCRExtractor
 
 @pytest.mark.parametrize('force_vision', [False, True])
 @pytest.mark.parametrize('ocr_text', ['', 'Local OCR text'])

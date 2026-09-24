@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for the printed-figure check (23 September 2026). All figures are synthetic.
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from types import SimpleNamespace
 
-from statement_reconciler.validators.printed_figures import printed_figures, tied_to_printed_figures
+from tothepenny.validators.printed_figures import printed_figures, tied_to_printed_figures
 
 
 def row(day, balance, description='Payment'):
@@ -69,14 +69,14 @@ def entry(day, amount_in, amount_out, balance):
 
 def test_a_result_of_balance_markers_alone_is_refused():
     # Every "period" is just its own brought-forward line: no row-by-row check can fail, and no money moved.
-    from statement_reconciler.validators.printed_figures import money_is_conserved
+    from tothepenny.validators.printed_figures import money_is_conserved
     ok, reason = money_is_conserved(100.00, 175.00, [marker(3, 150.00), marker(2, 120.00), marker(1, 100.00)])
     assert not ok
     assert 'brought forward' in reason or 'closing balance' in reason
 
 
 def test_periods_that_carry_their_money_are_conserved():
-    from statement_reconciler.validators.printed_figures import money_is_conserved
+    from tothepenny.validators.printed_figures import money_is_conserved
     rows = [marker(1, 100.00), entry(1, 20.00, 0.0, 120.00), marker(1, 120.00, 'CARRIED'),
             marker(2, 120.00), entry(2, 0.0, 45.00, 75.00)]
     ok, reason = money_is_conserved(100.00, 75.00, rows)
@@ -86,7 +86,7 @@ def test_periods_that_carry_their_money_are_conserved():
 def test_a_page_opening_printed_after_its_first_entry_is_accepted_when_the_rows_confirm_it():
     # NatWest prints some page openings after the page's first entry: page 1 ends at 466.27, page 2 says "brought
     # forward 366.27", and its first entry (-100.00) prints 366.27. The rows are right; the marker is out of place.
-    from statement_reconciler.validators.printed_figures import money_is_conserved
+    from tothepenny.validators.printed_figures import money_is_conserved
     rows = [marker(1, 542.59), entry(1, 0.0, 76.32, 466.27), marker(2, 366.27), entry(2, 0.0, 100.00, 366.27),
             entry(2, 0.0, 58.46, 307.81)]
     ok, reason = money_is_conserved(542.59, 307.81, rows)
@@ -94,20 +94,20 @@ def test_a_page_opening_printed_after_its_first_entry_is_accepted_when_the_rows_
 
 
 def test_small_print_read_as_payments_breaks_the_chain():
-    from statement_reconciler.validators.printed_figures import money_is_conserved
+    from tothepenny.validators.printed_figures import money_is_conserved
     rows = [entry(1, 0.0, 10.00, 90.00), entry(1, 0.0, 2.94, None)]
     ok, _ = money_is_conserved(100.00, 90.00, rows)
     assert not ok
 
 
 def test_balances_with_no_money_moved_prove_nothing():
-    from statement_reconciler.validators.printed_figures import money_is_conserved
+    from tothepenny.validators.printed_figures import money_is_conserved
     ok, reason = money_is_conserved(38.00, 38.00, [entry(1, 0.0, 0.0, 38.00), entry(2, 0.0, 0.0, 38.00)])
     assert not ok
     assert 'moves money' in reason
 
 
 def test_a_statement_with_no_activity_carries_its_balance():
-    from statement_reconciler.validators.printed_figures import money_is_conserved
+    from tothepenny.validators.printed_figures import money_is_conserved
     ok, reason = money_is_conserved(0.02, 0.02, [marker(11, 0.02)])
     assert ok, reason

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for the online-banking export reader (23 September 2026). All text is synthetic.
 
@@ -8,7 +8,7 @@ proved against the one before it in date order, and the opening balance is worke
 """
 from __future__ import annotations
 
-from statement_reconciler.parsers.online_export_reader import looks_like_export, read_export
+from tothepenny.parsers.online_export_reader import looks_like_export, read_export
 
 EXPORT = """Example Bank                 Online Banking
 Transactions

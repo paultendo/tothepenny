@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Regression tests for NatWest parser layout path.
 
@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from statement_reconciler.config import get_bank_config_loader
-from statement_reconciler.extractors.pdf_extractor import PDFExtractor
-from statement_reconciler.parsers.natwest_parser import NatWestParser
+from tothepenny.config import get_bank_config_loader
+from tothepenny.extractors.pdf_extractor import PDFExtractor
+from tothepenny.parsers.natwest_parser import NatWestParser
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

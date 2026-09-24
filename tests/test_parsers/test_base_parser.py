@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for base parser utility methods."""
 
@@ -7,9 +7,9 @@ import re
 import pytest
 from datetime import datetime
 
-from statement_reconciler.parsers.base_parser import BaseTransactionParser
-from statement_reconciler.models import Transaction, TransactionType
-from statement_reconciler.config import BankConfig
+from tothepenny.parsers.base_parser import BaseTransactionParser
+from tothepenny.models import Transaction, TransactionType
+from tothepenny.config import BankConfig
 
 
 class DummyParser(BaseTransactionParser):

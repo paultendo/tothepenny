@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "statement-reconciler"
+name = "tothepenny"
 version = "0.1.0"
-description = "Extract transactions from bank statement PDFs (UK banks, plus some French and Brazilian banks), locally, and prove each statement against the bank's own balances."
+description = "Extract transactions from bank statement PDFs (UK banks, plus some French and Brazilian banks), locally, and check each statement against the balances the bank printed."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "AGPL-3.0-only OR LicenseRef-Commercial" }
@@ -29,10 +29,8 @@ dependencies = [
     "pytesseract>=0.3.10",
     "opencv-python>=4.8.0",
     "Pillow>=10.0.0",
-    "pandas>=2.0.0",
     "openpyxl>=3.1.0",
     "python-dateutil>=2.8.2",
-    "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
     "rich>=13.0.0",
     "click>=8.1.0",
@@ -42,17 +40,17 @@ dependencies = [
 dev = ["pytest>=7.4.0", "reportlab>=4.0"]
 
 [project.scripts]
-statement-reconciler = "statement_reconciler.cli:main"
+tothepenny = "tothepenny.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/paultendo/statement-reconciler"
-Issues = "https://github.com/paultendo/statement-reconciler/issues"
+Homepage = "https://github.com/paultendo/tothepenny"
+Issues = "https://github.com/paultendo/tothepenny/issues"
 
 [tool.setuptools.packages.find]
-include = ["statement_reconciler*"]
+include = ["tothepenny*"]
 
 [tool.setuptools.package-data]
-statement_reconciler = ["bank_templates/*.yaml"]
+tothepenny = ["bank_templates/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

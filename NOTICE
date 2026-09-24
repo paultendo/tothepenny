@@ -1,4 +1,4 @@
-statement-reconciler
+tothepenny
 Copyright (C) 2026 Paul Wood FRSA (GitHub: @paultendo, https://github.com/paultendo).
 All rights reserved except as licensed below.
 
@@ -16,15 +16,17 @@ Additional terms under section 7 of the GNU Affero General Public License
 These terms supplement the AGPL for this program, as section 7 permits:
 
 a. Author attribution (section 7(b)). You must preserve, in every copy and in any modified version, the copyright
-   notice above and the attribution "statement-reconciler by Paul Wood FRSA". Where a modified version displays
+   notice above and the attribution "tothepenny by Paul Wood FRSA". Where a modified version displays
    Appropriate Legal Notices, those notices must include that attribution.
 
-b. Trademarks (section 7(e)). This licence does not grant any right to use the name "statement-reconciler", or any
+b. Trademarks (section 7(e)). This licence does not grant any right to use the name "tothepenny", or any
    logo or trade mark of the copyright holder, except to describe the origin of the program accurately. A modified
    version distributed or offered to others must not be presented under that name. See TRADEMARKS.md.
 
 Third-party components
 ----------------------
 
-statement-reconciler's Python dependencies are published under permissive licences (MIT, BSD, Apache-2.0, HPND).
-It invokes Poppler (pdftotext) and Tesseract as separate programs, and those are governed by their own licences.
+tothepenny's Python dependencies are published under permissive licences (MIT, BSD, Apache-2.0, HPND). PDFs are
+read with PDFium (BSD-3-Clause and Apache-2.0), through pypdfium2 on a desktop and, in the browser version, through
+the WebAssembly build published by pdfium-binaries (MIT). The browser version runs its Python in Pyodide
+(MPL-2.0). Scanned statements are read with Tesseract, a separate program governed by its own licence.

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for Transaction model."""
-from statement_reconciler.models import Transaction
+from tothepenny.models import Transaction
 
 
 def test_to_dict_handles_missing_date():

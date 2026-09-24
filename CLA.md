@@ -3,7 +3,7 @@
 **Draft for the copyright holder's review before first use.**
 
 This Agreement is between you (the "Contributor") and **Paul Wood FRSA** (GitHub: @paultendo) (the "Maintainer"), who owns and maintains
-statement-reconciler (the "Project"). The Project is released under the GNU Affero General Public License v3.0 only,
+tothepenny (the "Project"). The Project is released under the GNU Affero General Public License v3.0 only,
 and is also licensed commercially. This Agreement lets the Maintainer do both with your Contributions. You keep the
 copyright in your Contributions.
 
@@ -72,7 +72,7 @@ sentence:
 > I have read the Contributor Licence Agreement and I agree to its terms
 
 The bot records your GitHub username, the date and the pull request. Your agreement then covers that pull request
-and all your future Contributions to statement-reconciler.
+and all your future Contributions to tothepenny.
 
 If you contribute on behalf of an organisation, it must sign a corporate version of this Agreement first. Open an
 issue to request one.

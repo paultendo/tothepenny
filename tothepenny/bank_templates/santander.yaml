@@ -1,0 +1,130 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# Santander UK Bank Configuration
+# Based on Santander UK Everyday Current Account statement format
+
+santander:
+  identifiers:
+    - "Santander"
+    - "santander.co.uk"
+    - "ABBYGB2L"
+    - "Everyday Current Account"
+    - "Santander Banking Operations"
+
+  # Statement header fields
+  header_patterns:
+    account_name: "^\\s+(MR|MS|MRS|MISS|DR)\\s+([A-Z][\\w\\s'.,-]{2,}?)$"
+    account_number: "Account number:\\s*(\\d{8})"
+    sort_code: "Sort Code:\\s*(\\d{2}\\s+\\d{2}\\s+\\d{2})"
+    statement_number: "Statement number:\\s*([\\d/]+)"
+    period_start: "for\\s+(\\d{1,2}(?:st|nd|rd|th)?\\s+\\w+\\s+\\d{4})\\s+to"
+    period_end: "to\\s+(\\d{1,2}(?:st|nd|rd|th)?\\s+\\w+\\s+\\d{4})"
+    previous_balance: "Balance brought forward.*?(-?£?\\s*[\\d,]+\\.\\d{2})"
+    new_balance: "Your balance at close of business.*?(-?£?\\s*[\\d,]+\\.\\d{2})"
+    payments_in: "Total money in:\\s+£([\\d,]+\\.\\d{2})"
+    payments_out: "Total money out:\\s+-?£([\\d,]+\\.\\d{2})"
+    iban: "IBAN:\\s*([A-Z]{2}\\d{2}\\s*[A-Z0-9\\s]+)"
+    bic: "BIC:\\s*([A-Z0-9]+)"
+
+  # Date formats used in this statement
+  date_formats:
+    - "%dth %b"          # "9th Jan", "10th Feb"
+    - "%dst %b"          # "1st Jan", "21st Feb"
+    - "%dnd %b"          # "2nd Jan", "22nd Feb"
+    - "%drd %b"          # "3rd Jan", "23rd Feb"
+    - "%d %b"            # "9 Jan" (fallback without suffix)
+    - "%dth %B"          # "9th January"
+    - "%dst %B"          # "1st January"
+    - "%dnd %B"          # "2nd January"
+    - "%drd %B"          # "3rd January"
+
+  # Transaction table structure
+  table_structure:
+    columns:
+      - date
+      - description
+      - money_in
+      - money_out
+      - balance
+
+  # Transaction patterns for Santander
+  # Santander has a simple table format with fixed columns
+  transaction_patterns:
+    standard: |
+      ^(\d{1,2}(?:st|nd|rd|th)?\s+\w+)\s+  # Date
+      (.+?)\s{2,}                           # Description (multiple spaces before amounts)
+      (?:([\d,]+\.\d{2})\s+)?              # Money in (optional)
+      (?:([\d,]+\.\d{2})\s+)?              # Money out (optional)
+      ([\d,]+\.\d{2})\s*$                   # Balance (required)
+
+  # Transaction type detection based on description keywords
+  transaction_types:
+    card_payment:
+      - "CARD PAYMENT"
+      - "CONTACTLESS"
+
+    transfer_in:
+      - "TRANSFER FROM"
+      - "BANK GIRO CREDIT"
+
+    transfer_out:
+      - "TRANSFER TO"
+      - "BILL PAYMENT"
+      - "FASTER PAYMENT TO"
+
+    direct_debit:
+      - "DIRECT DEBIT"
+      - "DD"
+
+    standing_order:
+      - "STANDING ORDER"
+      - "SO"
+
+    cash_withdrawal:
+      - "ATM"
+      - "CASH"
+
+    interest:
+      - "INTEREST"
+      - "CREDIT INTEREST"
+
+    fee:
+      - "FEE"
+      - "CHARGE"
+
+    refund:
+      - "CREDIT FROM"
+      - "REFUND"
+
+  # Validation rules specific to Santander
+  validation:
+    balance_tolerance: 0.01
+    enforce_date_order: false  # Dates can have multiple transactions
+    require_description: true
+    allow_multiline_description: true
+
+  # Field mapping to standardized output
+  field_mapping:
+    money_in: "money_in"
+    money_out: "money_out"
+    date: "date"
+    description: "description"
+    balance: "balance"
+
+# Notes for parser implementation:
+# 1. Santander uses a clean table format with fixed-width columns
+# 2. Date format: "9th Jan", "10th Feb" (ordinal suffixes)
+# 3. Description can span multiple lines (continuation lines don't have dates)
+# 4. Column positions (approximate):
+#    - Date: 0-18
+#    - Description: 18-104
+#    - Money in: 104-118
+#    - Money out: 118-137
+#    - Balance: 137-end
+# 5. Header line: "Date              Description                                                                           Money in      Money out        £ Balance"
+# 6. "Balance brought forward from previous statement" is a special marker
+# 7. Multi-line descriptions have continuation on next line with no date
+# 8. All transactions have exactly one of: money_in OR money_out (never both)
+# 9. Balance is ALWAYS present on each transaction
+# 10. Read as laid-out text for best results (keeps the columns aligned)

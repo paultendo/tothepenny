@@ -23,10 +23,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: 'signatures/version1/cla.json'
-          path-to-document: 'https://github.com/paultendo/statement-reconciler/blob/main/CLA.md'
+          path-to-document: 'https://github.com/paultendo/tothepenny/blob/main/CLA.md'
           # Signatures live on their own branch so that main can be protected.
           branch: 'cla-signatures'
           allowlist: paultendo,dependabot[bot]
           custom-pr-sign-comment: 'I have read the Contributor Licence Agreement and I agree to its terms'
-          custom-notsigned-prcomment: 'Thank you for your contribution. Before it can be merged, please read the [Contributor Licence Agreement](https://github.com/paultendo/statement-reconciler/blob/main/CLA.md) and, if you agree, reply to this pull request with the exact sentence below.'
+          custom-notsigned-prcomment: 'Thank you for your contribution. Before it can be merged, please read the [Contributor Licence Agreement](https://github.com/paultendo/tothepenny/blob/main/CLA.md) and, if you agree, reply to this pull request with the exact sentence below.'
           custom-allsigned-prcomment: 'Thank you: every contributor to this pull request has agreed to the Contributor Licence Agreement.'

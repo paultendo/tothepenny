@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for transaction date estimation."""
 from datetime import datetime
 
-from statement_reconciler.models import Transaction
-from statement_reconciler.pipeline import ExtractionPipeline
+from tothepenny.models import Transaction
+from tothepenny.pipeline import ExtractionPipeline
 
 
 def test_estimate_missing_dates_between_neighbors():

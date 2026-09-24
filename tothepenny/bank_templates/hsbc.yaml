@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# HSBC UK Bank Configuration
+# Based on HSBC UK Current Account statement format
+
+hsbc:
+  identifiers:
+    - "HSBC"
+    - "hsbc.co.uk"
+    - "HBUKGB"
+    - "Your Bank Account details"
+    - "first direct"
+    - "firstdirect.com"
+    - "firstdirect"
+
+  # Statement header fields
+  header_patterns:
+    # HSBC has header and data on separate lines, so we match the data line
+    # Match account holder name: starts with capital, then word chars/spaces, before sort code
+    # Negative lookahead to exclude header line "Acco unt Nam e"
+    account_name: "^(?!Acco\\s)([A-Z][\\w\\s'.,-]{2,}?)\\s{2,}\\d{2}-\\d{2}-\\d{2}"
+    account_number: "\\d{2}-\\d{2}-\\d{2}\\s+(\\d{8})"
+    sort_code: "(\\d{2}-\\d{2}-\\d{2})\\s+\\d{8}"
+    # "19 November to 18 December 2025", or across a year end "19 December 2025 to 18 January 2026"
+    period_start: "(\\d{1,2}\\s+[A-Za-z]+(?:\\s+\\d{4})?)\\s+to\\s+\\d{1,2}\\s+[A-Za-z]+\\s+\\d{4}"
+    period_end: "\\d{1,2}\\s+[A-Za-z]+(?:\\s+\\d{4})?\\s+to\\s+(\\d{1,2}\\s+[A-Za-z]+\\s+\\d{4})"
+    previous_balance: "Ope\\s*ning\\s*Balance\\s+£?\\s*([\\d,]+\\.\\d{2})"
+    new_balance: "Clos\\s*ing\\s*Balance\\s+£?\\s*([\\d,]+\\.\\d{2})"
+    payments_in: "Paym\\s*e\\s*nts\\s*In\\s+£?\\s*([\\d,]+\\.\\d{2})"
+    payments_out: "Paym\\s*e\\s*nts\\s*Out\\s+£?\\s*([\\d,]+\\.\\d{2})"
+
+  # Date formats used in this statement
+  date_formats:
+    - "%d %b %y"      # "07 Feb 23"
+    - "%d %B %Y"      # "07 February 2023"
+    - "%d %b %Y"      # "07 Feb 2023"
+
+  # Transaction table structure
+  table_structure:
+    columns:
+      - date
+      - payment_type
+      - description
+      - paid_out
+      - paid_in
+      - balance
+
+  # Transaction/payment type codes (HSBC specific)
+  transaction_types:
+    vis:
+      name: "Visa Debit"
+      direction: "ambiguous"  # Can be purchase (out) or refund (in)
+      keywords: ["VIS"]
+
+    contactless:
+      name: "Contactless Payment"
+      direction: "out"
+      keywords: [")))"]
+
+    cr:
+      name: "Credit"
+      direction: "in"
+      keywords: ["CR"]
+
+    dd:
+      name: "Direct Debit"
+      direction: "out"
+      keywords: ["DD"]
+
+    so:
+      name: "Standing Order"
+      direction: "out"
+      keywords: ["SO"]
+
+    bp:
+      name: "Bill Payment"
+      direction: "out"
+      keywords: ["BP"]
+
+    atm:
+      name: "ATM Withdrawal"
+      direction: "out"
+      keywords: ["ATM"]
+
+    pim:
+      name: "Payment In Machine"
+      direction: "in"
+      keywords: ["PIM"]
+
+    chq:
+      name: "Cheque"
+      direction: "ambiguous"
+      keywords: ["CHQ"]
+
+    tfr:
+      name: "Transfer"
+      direction: "ambiguous"
+      keywords: ["TFR"]
+
+  # Validation rules specific to HSBC
+  validation:
+    balance_tolerance: 0.01
+    enforce_date_order: false  # Dates can repeat for multiple transactions
+    require_description: true
+
+  # Field mapping to standardized output
+  field_mapping:
+    paid_in: "money_in"
+    paid_out: "money_out"
+    date: "date"
+    payment_type: "type"
+    description: "description"
+    balance: "balance"
+
+  capture_word_layout: true
+  prefer_page_text: true
+
+# Notes for parser implementation:
+# 1. HSBC uses multi-line descriptions (like NatWest)
+# 2. Date appears once, then multiple transactions follow without dates
+# 3. Payment type code on first line of each transaction
+# 4. Description can span 1-2 lines after payment type
+# 5. Amounts in "Paid out" or "Paid in" columns (never both for one transaction)
+# 6. Balance shown after each transaction or group of transactions
+# 7. "BALANCE BROUGHT FORWARD" and "BALANCE CARRIED FORWARD" markers
+# 8. Some transactions show balance after each one, others show balance after several

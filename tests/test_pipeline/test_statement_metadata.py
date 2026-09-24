@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 from datetime import datetime
 
-from statement_reconciler.pipeline import ExtractionPipeline
-from statement_reconciler.models import Statement, Transaction
-from statement_reconciler.config.bank_config_loader import BankConfig
+from tothepenny.pipeline import ExtractionPipeline
+from tothepenny.models import Statement, Transaction
+from tothepenny.config.bank_config_loader import BankConfig
 
 
 def _txn(date_value: datetime, balance: float, money_out: float = 0.0, money_in: float = 0.0):

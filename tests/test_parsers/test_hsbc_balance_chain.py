@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for the HSBC day-end balance reader (23 September 2026). All text is synthetic.
 
@@ -9,7 +9,7 @@ returns a result only when every printed balance reconciles.
 """
 from __future__ import annotations
 
-from statement_reconciler.parsers.hsbc_balance_chain import read_chain
+from tothepenny.parsers.hsbc_balance_chain import read_chain
 
 HEADER = "Date             Payment type and details        £ Paid out                £ Paid in              £ Balance"
 

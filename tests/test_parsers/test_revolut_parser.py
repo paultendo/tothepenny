@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Synthetic native-PDF regression gates; no client statement data."""
 import csv
@@ -44,9 +44,9 @@ class _Document:
 import pytest
 from openpyxl import load_workbook
 
-from statement_reconciler.config.bank_config_loader import BankConfigLoader
-from statement_reconciler.parsers.revolut_parser import RevolutParser
-from statement_reconciler.pipeline import ExtractionPipeline
+from tothepenny.config.bank_config_loader import BankConfigLoader
+from tothepenny.parsers.revolut_parser import RevolutParser
+from tothepenny.pipeline import ExtractionPipeline
 
 
 def statement_pdf(tmp_path, *, shift=0, surname='Example', fault=None):

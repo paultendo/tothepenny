@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Statement text must stay inert in exported spreadsheets. All data is synthetic."""
 from openpyxl import Workbook, load_workbook
 
-from statement_reconciler.utils.spreadsheet_safety import csv_safe, neutralise_formulas
+from tothepenny.utils.spreadsheet_safety import csv_safe, neutralise_formulas
 
 
 def test_formula_text_from_a_statement_is_stored_as_text(tmp_path):

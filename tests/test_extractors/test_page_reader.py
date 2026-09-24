@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for the page reader (23 September 2026). Every PDF is synthetic, drawn with reportlab.
 
@@ -15,7 +15,7 @@ import pytest
 
 canvas = pytest.importorskip('reportlab.pdfgen.canvas')
 
-from statement_reconciler.extractors.page_reader import read_pages  # noqa: E402
+from tothepenny.extractors.page_reader import read_pages  # noqa: E402
 
 
 def _pdf(path: Path, draw) -> Path:
@@ -110,8 +110,8 @@ def test_a_ruled_table_is_read_from_its_drawn_lines(tmp_path):
 
 def test_each_transaction_is_placed_on_the_page_that_prints_its_balance(tmp_path):
     from datetime import datetime
-    from statement_reconciler.models import Transaction
-    from statement_reconciler.pipeline import ExtractionPipeline
+    from tothepenny.models import Transaction
+    from tothepenny.pipeline import ExtractionPipeline
 
     path = tmp_path / 'h.pdf'
     c = canvas.Canvas(str(path), pagesize=(595, 842))

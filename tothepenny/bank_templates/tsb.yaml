@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+
+# TSB Bank Configuration
+
+tsb:
+  identifiers:
+    - "TSB"
+    - "TSB Bank"
+    - "TSBSGB2AXXX"  # BIC code
+    - "tsb.co.uk"
+
+  # Statement header fields
+  header_patterns:
+    # Capture entire name including title (Mr/Mrs/etc) and all name parts
+    account_name: "^\\s*((Mr|Mrs|Miss|Ms|Dr|Prof)\\s+[A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2})"
+    account_number: "Account Number:\\s*(\\d+)"
+    sort_code: "Sort Code:\\s*(\\d{2}-\\d{2}-\\d{2})"
+    period_start: "Effective from:\\s+(\\d{1,2}\\s+\\w+\\s+\\d{4})"
+    period_end: "to\\s+(\\d{1,2}\\s+\\w+\\s+\\d{4})"
+    # Note: TSB PDFs use '[' instead of '£' symbol in extracted text
+    # Opening balance: first Balance line after "Date of previous statement" in Your Account section
+    previous_balance: "Date of previous statement[^£\\[]*[£\\[]([\\d,]+\\.\\d{2})"
+    # Closing balance: Balance line that comes after "Money out" summary line
+    new_balance: "Money out\\s+[£\\[][\\d,]+\\.[\\d]{2}[^£\\[]*[£\\[]([\\d,]+\\.\\d{2})"
+    money_in: "Money in\\s+[£\\[]([\\d,]+\\.\\d{2})"
+    money_out: "Money out\\s+[£\\[]([\\d,]+\\.\\d{2})"
+
+  # Date formats used in this statement
+  date_formats:
+    - "%d %b %y"      # "15 Oct 23"
+    - "%d %B %Y"      # "15 October 2023"
+    - "%d %b %Y"      # "15 Oct 2023"
+
+  # Transaction type keywords
+  transaction_types:
+    transfer:
+      - "TRANSFER"
+      - "FROM Cash Account"
+      - "TO Cash Account"
+
+    direct_debit:
+      - "DIRECT DEBIT"
+      - "DD"
+
+    standing_order:
+      - "STANDING ORDER"
+      - "SO"
+
+    card_payment:
+      - "DEBIT CARD"
+      - "CARD PAYMENT"
+
+    cash_withdrawal:
+      - "ATM"
+      - "CASH"
+
+    cheque:
+      - "CHEQUE"
+      - "CHQ"
+
+    interest:
+      - "INTEREST"
+      - "CREDIT INTEREST"
+
+    fee:
+      - "FEE"
+      - "CHARGE"
+
+  # Special transaction markers
+  special_transactions:
+    opening_balance: "STATEMENT OPENING BALANCE"
+
+  # Bank-specific skip patterns (in addition to universal patterns)
+  skip_patterns:
+    - "TSB Bank plc"
+    - "DV015004A-\\d+-E-TSBS"  # Document reference
+    - "^Money\\s*in"           # Summary line starting with Money in
+    - "^Money\\s*out"          # Summary line starting with Money out
+    - "Sort Code:\\s*\\d{2}-\\d{2}-\\d{2}"  # Sort code line
+    - "Account Number:\\s*\\d+"  # Account number line
+    - "Statement\\s*number"      # Header on each page
+    - "Easy Saver"  # Account type
+    - "Your Transactions"
+    - "^\\s+\\d{2}/\\d{2}/\\d{4}\\s*$"  # Bare date line
+    - "Financial\\s*Services\\s*Compensation"  # FSCS info block
+    - "FinancialServicesCompensation"
+    - "covered by these schemes"
+    - "Basic information about the protection"
+    - "Easy Saver Account Summary"
+
+  # Validation rules
+  validation:
+    balance_tolerance: 0.01
+    enforce_date_order: true
+    require_description: true
+
+  # Field mapping to standardized output
+  field_mapping:
+    money_in: "money_in"
+    money_out: "money_out"
+    date: "date"
+    payment_type: "transaction_type"
+    details: "description"
+    balance: "balance"

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Regression tests for the TSB parser.
 
@@ -13,8 +13,8 @@ from datetime import datetime
 
 import pytest
 
-from statement_reconciler.config import get_bank_config_loader
-from statement_reconciler.parsers.tsb_parser import TSBParser
+from tothepenny.config import get_bank_config_loader
+from tothepenny.parsers.tsb_parser import TSBParser
 
 
 @pytest.fixture(scope="module")

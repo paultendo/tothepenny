@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Regression tests for the Metro Bank parser (23 September 2026).
 
@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from statement_reconciler.config import get_bank_config_loader
-from statement_reconciler.parsers.metro_parser import MetroTransactionParser
+from tothepenny.config import get_bank_config_loader
+from tothepenny.parsers.metro_parser import MetroTransactionParser
 
 
 @pytest.fixture(scope="module")

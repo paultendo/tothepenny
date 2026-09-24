@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Tests for the bank-independent running-balance reader. All statement text is synthetic."""
 from __future__ import annotations
 
-from statement_reconciler.parsers.running_balance_reader import read_running_balance
+from tothepenny.parsers.running_balance_reader import read_running_balance
 
 HEAD = "Date       Description                                           Money out £           Money in £            Balance £     Start balance"
 

@@ -1,6 +1,6 @@
 # Commercial licence
 
-statement-reconciler is dual-licensed by its copyright holder, **Paul Wood FRSA** (GitHub: [@paultendo](https://github.com/paultendo)).
+tothepenny is dual-licensed by its copyright holder, **Paul Wood FRSA** (GitHub: [@paultendo](https://github.com/paultendo)).
 
 ## Option 1: GNU AGPL v3.0 only (free)
 
@@ -20,7 +20,7 @@ licence governs:
 
 You need a commercial licence if you want to do any of the following without the AGPL's obligations:
 
-- include statement-reconciler, or code derived from it, in a product you sell or distribute without releasing
+- include tothepenny, or code derived from it, in a product you sell or distribute without releasing
   that product's source code under the AGPL;
 - run it as part of a hosted service, software-as-a-service platform, API or app used by others without releasing
   that service's source code under the AGPL;
@@ -36,5 +36,5 @@ Until a written commercial licence is signed, your only rights are those under t
 ## Contact
 
 Open an issue titled "Commercial licence enquiry" at
-https://github.com/paultendo/statement-reconciler/issues, or contact Paul Wood FRSA (@paultendo) through
+https://github.com/paultendo/tothepenny/issues, or contact Paul Wood FRSA (@paultendo) through
 https://github.com/paultendo.

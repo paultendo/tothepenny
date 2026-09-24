@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
-# Copyright (C) 2026 Paul Wood FRSA. statement-reconciler by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
+# Copyright (C) 2026 Paul Wood FRSA. tothepenny by Paul Wood FRSA; see NOTICE and COMMERCIAL.md.
 
 """Regression tests for the Lloyds parser column boundaries.
 
@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import pytest
 
-from statement_reconciler.config import get_bank_config_loader
-from statement_reconciler.parsers.lloyds_parser import LloydsParser
-from statement_reconciler.utils import parse_currency
+from tothepenny.config import get_bank_config_loader
+from tothepenny.parsers.lloyds_parser import LloydsParser
+from tothepenny.utils import parse_currency
 
 
 @pytest.fixture(scope="module")
