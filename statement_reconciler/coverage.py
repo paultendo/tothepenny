@@ -28,12 +28,21 @@ def _day(value) -> Optional[date]:
     return date.fromisoformat(str(value)[:10])
 
 
+def _printed(result) -> bool:
+    # Results from before the flag existed count as printed, as they were treated then
+    return getattr(result, 'period_printed', None) is not False
+
+
 def account_coverage(results: Iterable) -> List[dict]:
     """One finding per join between consecutive reconciled statements of the same account, in date order.
 
     Each result needs: file, bank, account, period_start, period_end, opening, closing, reconciled. Kinds:
     'joined' (closing equals the next opening and the periods follow on), 'balance jump' (money moved between
     statements that are not here), 'missing period' (a gap in the dates), 'overlap' or 'duplicate'.
+
+    A missing period is claimed only between periods both statements print. A period taken from the first and last
+    transactions leaves gaps whenever the account is quiet, so between those only a balance jump shows something
+    is missing.
     """
     accounts = defaultdict(list)
     for r in results:
@@ -53,7 +62,7 @@ def account_coverage(results: Iterable) -> List[dict]:
             jump = round(after.opening - before.closing, 2)
             if same_period:
                 kind = 'duplicate'
-            elif end and start and start > end + timedelta(days=MAX_GAP_DAYS):
+            elif end and start and start > end + timedelta(days=MAX_GAP_DAYS) and _printed(before) and _printed(after):
                 kind = 'missing period'
             elif end and start and start < end - timedelta(days=1):
                 kind = 'overlap'

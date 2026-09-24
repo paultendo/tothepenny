@@ -661,6 +661,10 @@ class ExtractionPipeline:
                 if not statement_start:
                     logger.error("Could not parse statement start date")
                     return None
+                # A start printed without its year ("19 December to 18 January 2026") took the end's year; across
+                # a year end it belongs to the year before.
+                if statement_start > statement_end:
+                    statement_start = statement_start.replace(year=statement_start.year - 1)
 
             # Balances
             opening_balance = parse_currency(extracted.get('previous_balance'))

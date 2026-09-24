@@ -39,6 +39,9 @@ class BatchFileResult:
     account: Optional[str] = None
     period_start: Optional[str] = None
     period_end: Optional[str] = None
+    # Whether the period is the one the statement prints; otherwise it spans the first and last transactions, and a
+    # gap in those dates is only a quiet spell, not missing paper
+    period_printed: Optional[bool] = None
     opening: Optional[float] = None
     closing: Optional[float] = None
     # A reconciled statement's transactions, for the combined dataset (not written to the report or manifest)
@@ -133,6 +136,7 @@ def _process_file(
             row.period_start = stmt.statement_start_date.date().isoformat() if stmt.statement_start_date else None
             row.period_end = stmt.statement_end_date.date().isoformat() if stmt.statement_end_date else None
             row.opening, row.closing = stmt.opening_balance, stmt.closing_balance
+            row.period_printed = period_is_printed(stmt)
         if result.balance_reconciled:
             row.rows = [{
                 'Date': t.date.strftime('%Y-%m-%d') if t.date else '',
@@ -288,6 +292,7 @@ def write_batch_report_csv(summary: BatchRunSummary, report_path: Path) -> None:
         'account',
         'period_start',
         'period_end',
+        'period_printed',
         'opening',
         'closing',
     ]
@@ -312,9 +317,21 @@ def write_batch_report_csv(summary: BatchRunSummary, report_path: Path) -> None:
                 'account': result.account or '',
                 'period_start': result.period_start or '',
                 'period_end': result.period_end or '',
+                'period_printed': '' if result.period_printed is None else result.period_printed,
                 'opening': '' if result.opening is None else result.opening,
                 'closing': '' if result.closing is None else result.closing,
             }.items()})
+
+
+def period_is_printed(stmt) -> bool:
+    """Whether the statement's period is the one it prints: read from the statement (a range, not a single statement
+    date) and not since widened to the transactions' dates, unless it is a combined statement's printed periods."""
+    start, end = getattr(stmt, 'metadata_start_date', None), getattr(stmt, 'metadata_end_date', None)
+    if not start or not end or start == end or not stmt.statement_start_date or not stmt.statement_end_date:
+        return False
+    if getattr(stmt, '_is_combined', False):
+        return True
+    return stmt.statement_start_date.date() == start.date() and stmt.statement_end_date.date() == end.date()
 
 
 def _pdf_has_text(file_path: Path, max_pages: int = 2) -> bool:

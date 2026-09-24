@@ -9,9 +9,9 @@ from types import SimpleNamespace
 from statement_reconciler.coverage import account_coverage
 
 
-def statement(file, start, end, opening, closing, account='01-02-03 12345678', reconciled=True):
+def statement(file, start, end, opening, closing, account='01-02-03 12345678', reconciled=True, printed=True):
     return SimpleNamespace(file=file, bank='example', account=account, period_start=start, period_end=end,
-                           opening=opening, closing=closing, reconciled=reconciled)
+                           opening=opening, closing=closing, reconciled=reconciled, period_printed=printed)
 
 
 def kinds(results):
@@ -38,3 +38,15 @@ def test_only_reconciled_statements_of_a_known_account_are_joined():
                statement('feb.pdf', '2026-02-01', '2026-02-28', 150.00, 90.00, reconciled=False),
                statement('x.pdf', '2026-02-01', '2026-02-28', 150.00, 90.00, account='N/A')]
     assert kinds(results) == []
+
+
+def test_a_period_taken_from_the_transactions_is_a_gap_only_when_the_balance_jumps():
+    # Statements that print no period span their first and last transactions: a quiet week between them is not
+    # missing paper, but money moving where no statement shows it still is.
+    results = [statement('jul.pdf', '2025-06-25', '2025-07-23', 100.00, 80.00, printed=False),
+               statement('aug.pdf', '2025-08-01', '2025-08-13', 80.00, 60.00, printed=False),
+               statement('sep.pdf', '2025-08-25', '2025-09-15', 75.00, 50.00, printed=False)]
+    assert kinds(results) == ['joined', 'balance jump']
+    # Where both periods are printed, a missing month is a missing statement even if the balance is unchanged.
+    assert kinds([statement('jan.pdf', '2026-01-01', '2026-01-31', 100.00, 150.00),
+                  statement('mar.pdf', '2026-03-01', '2026-03-31', 150.00, 60.00)]) == ['missing period']
