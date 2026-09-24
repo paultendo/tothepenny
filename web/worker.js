@@ -4,7 +4,7 @@
 // Runs off the page's main thread: PDFium (WebAssembly) reads each PDF, Pyodide runs tothepenny's Python on the
 // readings, and the output files come back to the page as bytes. No network requests except loading this code.
 
-import { readPdf, wrapPdfium } from './pdf-read.js';
+import { openError, readPdf, wrapPdfium } from './pdf-read.js';
 
 const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v314.0.7/full/';
 const here = (file) => new URL(file, import.meta.url).href;
@@ -55,8 +55,8 @@ onmessage = async (event) => {
     const { P, py } = await ready;
     if (type === 'warm') return;
     const FS = py.FS;
-    for (const dir of ['/work', '/work/in', '/work/json']) if (!FS.analyzePath(dir).exists) FS.mkdir(dir);
-    for (const dir of ['/work/in', '/work/json']) for (const f of FS.readdir(dir)) if (f !== '.' && f !== '..') FS.unlink(`${dir}/${f}`);
+    for (const dir of ['/work', '/work/in']) if (!FS.analyzePath(dir).exists) FS.mkdir(dir);
+    for (const f of FS.readdir('/work/in')) if (f !== '.' && f !== '..') FS.unlink(`/work/in/${f}`);
 
     const names = [];
     const unreadable = {};
@@ -64,16 +64,15 @@ onmessage = async (event) => {
       postMessage({ type: 'progress', stage: 'read', done: i, total: files.length, name: file.name });
       const bytes = new Uint8Array(file.bytes);
       FS.writeFile(`/work/in/${file.name}`, bytes);
-      try {
-        FS.writeFile(`/work/json/${file.name}.json`, JSON.stringify(readPdf(P, bytes)));
-      } catch (error) {
-        unreadable[file.name] = /error 4/.test(error.message) ? 'it needs a password to open (a statement locked only against editing or printing reads normally)' : 'it is not a readable PDF';
-      }
+      // Only whether it opens, here: each file is read in full when the batch reaches it, one at a time
+      const error = openError(P, bytes);
+      if (error) unreadable[file.name] = error === 4 ? 'it needs a password to open (a statement locked only against editing or printing reads normally)' : 'it is not a readable PDF';
       names.push(file.name);
     }
 
     const progress = (done, total, name) => postMessage({ type: 'progress', stage: 'reconcile', done, total, name });
-    const result = JSON.parse(py.globals.get('browser').run(py.toPy(names), '/work', progress, py.toPy(unreadable)));
+    const reader = (name) => JSON.stringify(readPdf(P, FS.readFile(`/work/in/${name}`)));
+    const result = JSON.parse(py.globals.get('browser').run(py.toPy(names), '/work', progress, py.toPy(unreadable), reader));
     const outputs = {};
     for (const name of result.outputs) outputs[name] = FS.readFile(`/work/out/${name}`);
     postMessage({ type: 'result', result, outputs }, Object.values(outputs).map((b) => b.buffer));

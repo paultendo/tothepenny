@@ -1,7 +1,7 @@
 # tothepenny
 
-Turn bank statement PDFs into a spreadsheet of transactions, with each statement checked against the balances the
-bank printed on it.
+**Does it add up?** Drop in PDF bank statements. tothepenny reads every line, checks it against the bank's own
+balances, and hands you a spreadsheet.
 
 People who read other people's bank statements (solicitors, advisers, accountants, family members helping with
 someone's affairs) need to know whether the numbers they are working from match the statement. tothepenny reads each

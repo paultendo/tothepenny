@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>tothepenny</title>
-  <meta name="description" content="Bank statement PDFs to a spreadsheet, checked against the bank's own figures, in your browser.">
+  <meta name="description" content="Drop in PDF bank statements. tothepenny reads every line, checks it against the bank's own balances, and hands you a spreadsheet. It all happens in your browser.">
   <style>
     :root { --background: #ffffff; --foreground: #0a1628; --ink-muted: #3e5266; --accent: #16a34a;
       --accent-soft: rgba(22, 163, 74, .12); --line: rgba(14, 30, 50, .12); --red: #c53030; --red-soft: rgba(197, 48, 48, .1);
@@ -15,7 +15,8 @@
     }
     body { margin: 0; background: var(--background); color: var(--foreground); font-family: system-ui, sans-serif; line-height: 1.5; }
     main { max-width: 60rem; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
-    h1 { font-size: 2.2rem; margin: 0 0 .4rem; letter-spacing: -.02em; }
+    .mark { font: 500 .8rem ui-monospace, 'SF Mono', Menlo, monospace; color: var(--ink-muted); margin: 0 0 .8rem; }
+    h1 { font: 400 clamp(2rem, 3.4vw, 2.6rem)/1.05 Georgia, 'Times New Roman', serif; margin: 0 0 .8rem; letter-spacing: -.02em; }
     .lede { color: var(--ink-muted); font-size: 1.1rem; margin: 0 0 1.8rem; max-width: 44rem; }
     footer { color: var(--ink-muted); font-size: .88rem; margin-top: 3rem; }
     footer a { color: inherit; }
@@ -23,12 +24,14 @@
 </head>
 <body>
   <main>
-    <h1>tothepenny</h1>
-    <p class="lede">Bank statement PDFs to a spreadsheet, checked against the balances the bank printed.
-      Everything happens in this browser tab: your statements are never uploaded.</p>
+    <p class="mark">tothepenny</p>
+    <h1>Does it add up?</h1>
+    <p class="lede">Drop in PDF bank statements. tothepenny reads every line, checks it against the bank's own balances,
+      and hands you a spreadsheet. It all happens in this tab.</p>
     <div id="tothepenny"></div>
     <footer>
-      <a href="https://github.com/paultendo/tothepenny">Source on GitHub</a> ·
+      <a href="https://github.com/paultendo/tothepenny">Source</a> ·
+      <a href="https://buymeacoffee.com/paultendo">Buy me a coffee</a> ·
       AGPL-3.0 or commercial licence · tothepenny by Paul Wood FRSA
     </footer>
   </main>

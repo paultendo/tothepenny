@@ -415,11 +415,26 @@ def _rules_from_paths(paths, page_height: float):
 _PRELOADED: dict = {}
 
 
-def preload(pdf_path, data: dict) -> None:
+def preload(pdf_path, data) -> None:
     """Register a file's pages as read by the browser reader (web/pdf-read.js): {'pages': [{'width', 'height',
-    'chars', 'paths', 'text'}]}. Readers of that path then use them instead of pypdfium2."""
+    'chars', 'paths', 'text'}]}, or a function returning that, called only when a reader first needs the file (so
+    a large set is read one file at a time). Readers of that path then use them instead of pypdfium2."""
     _PRELOADED[str(Path(pdf_path).resolve())] = data
     _read.cache_clear()
+
+
+_LAST: list = []  # the one reading most recently fetched through a function: (path, data)
+
+
+def _preloaded(path: str):
+    data = _PRELOADED.get(path)
+    if not callable(data):
+        return data
+    if _LAST and _LAST[0][0] == path:
+        return _LAST[0][1]
+    fetched = data()
+    _LAST[:] = [(path, fetched)]
+    return fetched
 
 
 def reading(pdf_path) -> dict:
@@ -456,13 +471,13 @@ def reading(pdf_path) -> dict:
 
 def preloaded_text(pdf_path) -> Optional[List[str]]:
     """Each page's bounded text for a preloaded file, or None."""
-    data = _PRELOADED.get(str(Path(pdf_path).resolve()))
+    data = _preloaded(str(Path(pdf_path).resolve()))
     return None if data is None else [page.get('text') or '' for page in data['pages']]
 
 
 @lru_cache(maxsize=4)
 def _read(path: str, mtime: float) -> Tuple[Page, ...]:
-    data = _PRELOADED.get(path)
+    data = _preloaded(path)
     if data is not None:
         pages = []
         for index, page in enumerate(data['pages']):

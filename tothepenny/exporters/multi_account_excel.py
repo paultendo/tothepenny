@@ -13,7 +13,7 @@ from openpyxl.utils import get_column_letter
 
 BLUE = '294B6B'
 PALE = 'EEF3F7'
-MONEY = '#,##0.00;[Red](#,##0.00);–'
+MONEY = '#,##0.00;[Red](#,##0.00);0.00'
 
 
 def literal(cell, value):

@@ -46,3 +46,16 @@ def test_the_browser_run_reconciles_a_statement_and_writes_the_downloads(tmp_pat
     assert not locked['reconciled'] and 'password' in locked['why']
     assert result['outputs'][0] == 'statements.xlsx' and (work / 'out' / 'statements.xlsx').exists()
     assert seen and seen[-1][:2] == (1, 1)
+
+
+def test_readings_are_fetched_one_file_at_a_time_when_the_batch_reaches_them(tmp_path):
+    pdf = _statement(tmp_path)
+    work = tmp_path / 'work'
+    (work / 'in').mkdir(parents=True)
+    for name in ('One.pdf', 'Two.pdf'):
+        shutil.copy(pdf, work / 'in' / name)
+    reading = json.dumps(page_reader.reading(pdf))
+    asked = []
+    result = json.loads(browser.run(['One.pdf', 'Two.pdf'], str(work), reader=lambda name: asked.append(name) or reading))
+    assert [s['reconciled'] for s in result['statements']] == [True, True]
+    assert asked[0] == 'One.pdf' and 'Two.pdf' in asked and asked.index('Two.pdf') > asked.index('One.pdf')

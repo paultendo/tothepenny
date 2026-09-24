@@ -29,6 +29,18 @@ const FPDF_PAGEOBJ_PATH = 2;
 const FPDF_PAGEOBJ_FORM = 5;
 const MAX_DEPTH = 2; // as pypdfium2's get_objects: the page's objects and one level into form objects
 
+// 0 if PDFium can open the file; otherwise its error code (4: it needs a password to open)
+export function openError(P, bytes) {
+  const M = P.pdfium;
+  const data = M.wasmExports.malloc(bytes.length);
+  M.HEAPU8.set(bytes, data);
+  const doc = P.FPDF_LoadMemDocument(data, bytes.length, 0);
+  const error = doc ? 0 : P.FPDF_GetLastError() || 3;
+  if (doc) P.FPDF_CloseDocument(doc);
+  M.wasmExports.free(data);
+  return error;
+}
+
 export function readPdf(P, bytes) {
   const M = P.pdfium;
   const heap = () => M.HEAPU8;

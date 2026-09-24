@@ -33,19 +33,19 @@ def _day(iso: str) -> str:
         return iso
 
 
-def reason(result) -> str:
-    """Why a statement did not reconcile, in a sentence for the person who chose the file."""
+def reason(result) -> tuple:
+    """Why a statement did not reconcile: a few words for its row, and a sentence for its tooltip and peek."""
     if result.skipped:
-        return 'This is a scan with no text in it. The browser version cannot read scans yet.'
+        return 'Scan', 'This is a scan with no text in it. The browser version cannot read scans yet.'
     text = result.error or (result.warnings[-1] if result.warnings else '')
     if text.startswith('Could not detect bank'):
-        return "Not recognised as a statement from a bank tothepenny reads yet."
+        return 'Unknown bank', 'Not recognised as a statement from a bank tothepenny reads yet.'
     if text.startswith('No transactions found'):
-        return 'No transactions found.'
+        return 'No transactions', 'No transactions found.'
     if 'mismatch' in text.lower() or 'did not reconcile' in text.lower() or not text:
-        return ("The transactions read did not add up to the bank's own figures, so none are given. "
-                + (f'({text.split(" | ")[0]})' if text else ''))
-    return text
+        return "Doesn't add up", ("The transactions read did not add up to the bank's own figures, so none are given."
+                                  + (f' ({text.split(" | ")[0]})' if text else ''))
+    return 'Not read', text
 
 
 def describe(finding: dict) -> str:
@@ -67,10 +67,12 @@ def describe(finding: dict) -> str:
     return (f"{account}: {finding['from_file']} and {finding['to_file']} cover some of the same days.")
 
 
-def run(names: List[str], work: str = '/work', progress: Optional[Callable] = None, unreadable=None) -> str:
+def run(names: List[str], work: str = '/work', progress: Optional[Callable] = None, unreadable=None,
+        reader: Optional[Callable] = None) -> str:
     """Reconcile each statement in work/in (its reading in work/json/<name>.json) and write the outputs to work/out.
     Returns, as JSON, what the page shows: each statement and whether it reconciled, and where statements do not
-    join up. Files the browser could not open at all are named in unreadable ({name: reason})."""
+    join up. Files the browser could not open at all are named in unreadable ({name: reason}). With reader, each
+    file's reading is fetched from it (reader(name) -> JSON) when the file is reached, rather than from work/json."""
     unreadable = dict(unreadable or {})
     base = Path(work)
     out = base / 'out'
@@ -80,7 +82,10 @@ def run(names: List[str], work: str = '/work', progress: Optional[Callable] = No
         if name in unreadable:
             continue
         pdf = base / 'in' / name
-        preload(pdf, json.loads((base / 'json' / f'{name}.json').read_text(encoding='utf-8')))
+        if reader is not None:
+            preload(pdf, lambda name=name: json.loads(reader(name)))
+        else:
+            preload(pdf, json.loads((base / 'json' / f'{name}.json').read_text(encoding='utf-8')))
         files.append(pdf)
 
     def step(done, total, name):
@@ -91,23 +96,38 @@ def run(names: List[str], work: str = '/work', progress: Optional[Callable] = No
     done = finish_batch(summary, out)
 
     rows = {name: {'file': name, 'bank': '', 'account': '', 'from': '', 'to': '', 'opening': None, 'closing': None,
-                   'transactions': 0, 'reconciled': False, 'why': f'The file could not be opened: {why}.'}
+                   'transactions': 0, 'reconciled': False, 'why': f'The file could not be opened: {why}.',
+                   'short': 'Needs password' if 'password' in why else 'Unreadable'}
             for name, why in unreadable.items()}
     for result in summary.results:
         reconciled = bool(result.reconciled) and not result.skipped
-        why = '' if reconciled else reason(result)
+        short, why = ('', '') if reconciled else reason(result)
         rows[result.file] = ({
             'file': result.file, 'bank': bank_name(result.bank) if result.bank else '', 'account': result.account or '',
             'from': result.period_start or '', 'to': result.period_end or '', 'opening': result.opening,
-            'closing': result.closing, 'transactions': result.transactions or 0, 'reconciled': reconciled, 'why': why,
+            'closing': result.closing, 'transactions': result.transactions or 0, 'reconciled': reconciled, 'why': why, 'short': short,
         })
     statements = [rows[name] for name in names if name in rows]  # in the order the files were chosen
-    issues = [f for f in done['findings'] if f['kind'] != 'joined']
+    issues, copies = [], {}
+    for f in done['findings']:
+        if f['kind'] == 'joined':
+            continue
+        if f['kind'] == 'duplicate':
+            # Several copies of one statement are one line, not one line per pair
+            key = (f['account'], f['from_end'])
+            if key not in copies:
+                copies[key] = {'kind': 'duplicate', 'account': f['account'], 'files': [f['from_file']], 'end': f['from_end']}
+                issues.append(copies[key])
+            copies[key]['files'].append(f['to_file'])
+            continue
+        issues.append(f)
     return json.dumps({
         'statements': statements,
         'transactions': done['transactions'],
         'transfers': done['transfers'],
         'joins': len(done['findings']) - len(issues),
-        'issues': [{'kind': f['kind'], 'text': describe(f)} for f in issues],
+        'issues': [{'kind': f['kind'], 'text': describe(f) if 'files' not in f else
+                    f"{f['account']}: {len(f['files'])} files are the same statement, to {_day(f['end'])}; it is counted once."}
+                   for f in issues],
         'outputs': [name for name in OUTPUTS if (out / name).exists()],
     })

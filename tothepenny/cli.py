@@ -226,7 +226,7 @@ def batch(directory, output_dir, format, bank, json_dir, manifest, limit, skip_e
 
     totals = summary.totals
     console.print(
-        f"\n[green]Batch complete[/green] — {totals['successes']} succeeded, {totals['failures']} failed, {totals['skipped']} skipped"
+        f"\n[green]Batch complete[/green]: {totals['successes']} succeeded, {totals['failures']} failed, {totals['skipped']} skipped"
     )
     console.print(f"Manifest written to: {manifest_path}")
     console.print(f"Batch report written to: {report_path}")
