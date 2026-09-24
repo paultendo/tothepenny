@@ -43,3 +43,34 @@ def test_an_export_whose_balances_do_not_follow_is_refused():
     r = read_export(EXPORT.replace('£ 632.78', '£ 633.78'))
     assert not r.reconciled
     assert 'does not follow' in r.reason
+
+
+ACCOUNT_HISTORY = """Statement of Account for 01/12/2024 to 15/12/2024
+ Date          Details                                     Withdrawn          Paid In         Balance
+ 02/12/2024    Card Transaction          6231 30NOV24
+                                         AN ONLINE SHOP
+                                         13886502597 HK             3.54                           4.91
+ 12/12/2024    Automated Credit          A BENEFIT                                   10.00        14.91
+ 13/12/2024    ATM Transaction           A CASH MACHINE            10.00                              j
+ 14/12/2024    Card Transaction          6231 13DEC24
+                                         A SHOP
+                                         LONDON GB                  1.00                           3.91
+"""
+
+
+def test_an_account_history_with_entries_over_several_lines_is_proved():
+    # Columns named Withdrawn and Paid In, full dates, and each entry's amount and balance on its last line.
+    r = read_export(ACCOUNT_HISTORY)
+    assert r.reconciled, r.reason
+    assert (r.opening, r.closing) == (8.45, 3.91)
+    assert [(row.amount, row.direction) for row in r.rows] == [(3.54, 'out'), (10.00, 'in'), (10.00, 'out'), (1.00, 'out')]
+    assert r.rows[0].description == ['Card Transaction          6231 30NOV24', 'AN ONLINE SHOP', '13886502597 HK']
+
+
+def test_an_unreadable_balance_is_carried_by_the_next_printed_one():
+    # "j" where OCR lost a balance: the entry's amount still has to carry 14.91 to the next printed 3.91.
+    r = read_export(ACCOUNT_HISTORY)
+    assert r.rows[2].balance is None
+    broken = read_export(ACCOUNT_HISTORY.replace('1.00                           3.91', '1.00                           3.00'))
+    assert not broken.reconciled
+    assert 'does not follow' in broken.reason

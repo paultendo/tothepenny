@@ -48,13 +48,15 @@ class Page:
     def lines(self, tolerance: Optional[float] = None, edge: str = 'top') -> List[List[dict]]:
         """Words grouped into lines, top to bottom, each line left to right. Words share a line when their `edge`
         ('top', or 'bottom' so text of different sizes on one baseline stays together) is within `tolerance` points
-        (default: 3, as most layouts need)."""
+        (default: 3) of the line's first word."""
         tolerance = 3.0 if tolerance is None else tolerance
         rows: List[List[dict]] = []
         for word in sorted(self.words, key=lambda w: (w[edge], w['x0'])):
             if rows:
-                last = rows[-1][-1]
-                if word[edge] - last[edge] <= tolerance:
+                # Measured from the line's first word, not its last: a column of stacked characters (a margin
+                # barcode) must not chain rows a line apart into one.
+                anchor = rows[-1][0]
+                if word[edge] - anchor[edge] <= tolerance:
                     rows[-1].append(word)
                     continue
             rows.append([word])

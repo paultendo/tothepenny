@@ -7,6 +7,7 @@ Main extraction pipeline - ETL orchestration.
 Coordinates extraction, parsing, validation, and export.
 Based on Monopoly's Pipeline pattern with our enhancements.
 """
+import copy
 import logging
 import time
 from pathlib import Path
@@ -249,74 +250,53 @@ class ExtractionPipeline:
                     processing_time=time.time() - start_time
                 )
 
-            # 2c.0. Apply transaction metadata (currency/date source defaults)
-            self._apply_transaction_metadata(transactions, statement)
+            # 2c.0-2d. Each candidate reading is judged on its own copy of the statement as read from the page
+            # (post-processing rewrites the opening, closing and dates), and must pass the balance checks and the
+            # proof rules. The first that passes is taken; a reading that balances only against itself hands over to
+            # the next instead of blocking it.
+            page_statement = copy.deepcopy(statement)
+            first_parser = getattr(self, "_last_parser_used", None)
 
-            post_warnings = self._post_process_statement(statement, transactions, bank_config)
+            def judge(candidate: list, note: Optional[list] = None):
+                trial = copy.deepcopy(page_statement)
+                self._apply_transaction_metadata(candidate, trial)
+                post = self._post_process_statement(trial, candidate, bank_config)
+                ok, notes = self._validate_transactions(trial, candidate, bank_config, perform_validation)
+                notes = (note or []) + (post or []) + list(notes)
+                candidate, trailing = self._drop_rows_after_closing(trial, candidate)
+                if trailing:
+                    notes.append(trailing)
+                if ok and perform_validation:
+                    ok, notes = self._require_printed_figures(file_path, text, trial, candidate, notes)
+                return ok, candidate, trial, notes
 
-            # 2d. Validate balances
-            balance_reconciled, warnings = self._validate_transactions(
-                statement,
-                transactions,
-                bank_config,
-                perform_validation
-            )
-            if post_warnings:
-                warnings = post_warnings + warnings
+            balance_reconciled, transactions, statement, warnings = judge(transactions)
 
-            # If universal parser failed validation, retry with bank-specific parser
-            if perform_validation and not balance_reconciled and getattr(self, "_last_parser_used", None) == "universal":
-                logger.info("Universal parser failed validation; retrying bank-specific parser")
-                fallback_txns = self._parse_transactions(
-                    text,
-                    bank_config,
-                    statement,
-                    file_path,
-                    word_layout,
-                    force_bank_specific=True
-                )
+            if perform_validation and not balance_reconciled and first_parser == "universal":
+                logger.info("Universal parser's reading is not proved; trying the bank's own parser")
+                fallback_txns = self._parse_transactions(text, bank_config, page_statement, file_path, word_layout,
+                                                         force_bank_specific=True)
                 if fallback_txns:
-                    self._apply_transaction_metadata(fallback_txns, statement)
-                    post_warnings = self._post_process_statement(statement, fallback_txns, bank_config)
-                    fallback_reconciled, fallback_warnings = self._validate_transactions(
-                        statement,
-                        fallback_txns,
-                        bank_config,
-                        perform_validation
-                    )
-                    if fallback_reconciled:
-                        logger.info("✓ Falling back to bank-specific parser after failed validation")
-                        transactions = fallback_txns
-                        balance_reconciled = fallback_reconciled
-                        warnings = (post_warnings or []) + fallback_warnings
-
-            # Lines after the row that carries the statement's closing balance are not transactions (small print).
-            transactions, trailing_note = self._drop_rows_after_closing(statement, transactions)
-            if trailing_note:
-                warnings = list(warnings) + [trailing_note]
-
-            # A reconciled result must tie to figures the bank printed, not only to itself.
-            if balance_reconciled:
-                balance_reconciled, warnings = self._require_printed_figures(file_path, text, statement, transactions, warnings)
+                    ok, txns, trial, notes = judge(fallback_txns)
+                    if ok:
+                        logger.info("✓ Reconciled by the bank's own parser")
+                        balance_reconciled, transactions, statement, warnings = ok, txns, trial, notes
 
             # Last resort for any bank: where the statement prints a balance on every line, read it line by line
-            # against those balances. Used only when it fully reconciles.
+            # against those balances. Used only when it passes every check.
             if perform_validation and not balance_reconciled and file_path.suffix.lower() == '.pdf':
-                chained = self._read_by_running_balance(file_path, statement)
+                reader_statement = copy.deepcopy(page_statement)
+                chained = self._read_by_running_balance(file_path, reader_statement)
                 if chained:
-                    self._apply_transaction_metadata(chained, statement)
-                    chain_ok, chain_warnings = self._validate_transactions(statement, chained, bank_config, perform_validation)
-                    if chain_ok:
+                    page_statement = reader_statement
+                    flips = getattr(self, '_running_balance_flips', 0)
+                    note = ["Read line by line against the statement's printed running balances."] + (
+                        [f"{flips} entr{'y' if flips == 1 else 'ies'} read against the column they sit in, because only that direction matches the printed balance."] if flips else []
+                    )
+                    ok, txns, trial, notes = judge(chained, note)
+                    if ok:
                         logger.info("✓ Reconciled by the running-balance reader")
-                        transactions = chained
-                        balance_reconciled = True
-                        flips = getattr(self, '_running_balance_flips', 0)
-                        warnings = ["Read line by line against the statement's printed running balances."] + (
-                            [f"{flips} entr{'y' if flips == 1 else 'ies'} read against the column they sit in, because only that direction matches the printed balance."] if flips else []
-                        ) + chain_warnings
-
-            if balance_reconciled:
-                balance_reconciled, warnings = self._require_printed_figures(file_path, text, statement, transactions, warnings)
+                        balance_reconciled, transactions, statement, warnings = ok, txns, trial, notes
 
             # 2e. Calculate overall confidence
             overall_confidence = self._calculate_overall_confidence(
