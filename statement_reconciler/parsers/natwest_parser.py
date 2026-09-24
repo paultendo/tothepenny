@@ -649,7 +649,8 @@ class NatWestParser(BaseTransactionParser):
                 marker_date = current_date or statement_start_date or statement_end_date
                 if not marker_date and transactions:
                     marker_date = transactions[-1].date
-                balance_value = amount_info['balance'] or amount_info['primary']
+                # A balance of 0.00 is a balance: test for None, never for falsiness
+                balance_value = amount_info['balance'] if amount_info['balance'] is not None else amount_info['primary']
                 marker_description = self._normalize_spaces(desc_fragment or row_text)
                 if marker_date and balance_value is not None:
                     transactions.append(
