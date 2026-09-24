@@ -226,6 +226,10 @@ class MonzoTransactionParser(BaseTransactionParser):
 
             # Carry-over buffer for next transaction (GPT-5 Pro fix)
             carry_over_desc = None  # Lines that belong to NEXT transaction
+            # Monzo centres an entry's text on its date line: the payee can sit above the date and the reference
+            # below, and entries are separated by blank lines. Once the current entry is complete, a blank line
+            # closes it, and text after that gap leads in to the next entry rather than continuing this one.
+            after_gap = False
 
             i = header_idx + 1
             while i < range_end:
@@ -258,6 +262,9 @@ class MonzoTransactionParser(BaseTransactionParser):
                 # Check for COMPLETE date first (DD/MM/YYYY), then split date (DD/MM/YYY)
                 date_match_complete = date_pattern_complete.match(line)
                 date_match_split = date_pattern_split.match(line) if not date_match_complete else None
+
+                if date_match_complete or date_match_split:
+                    after_gap = False
 
                 if date_match_complete:
                     # Complete date format - no need to wait for year digit
@@ -411,7 +418,13 @@ class MonzoTransactionParser(BaseTransactionParser):
                 else:
                     # No amounts - might be continuation line or carry-over for next transaction
                     stripped = line.strip()
-                    if stripped and not re.search(r'^\(GBP\)', stripped):
+                    if not stripped:
+                        if txn_is_complete():
+                            after_gap = True
+                    elif after_gap and txn_is_complete() and not re.search(r'^\(GBP\)', stripped):
+                        # Text after the gap that closed a complete entry: the lead-in of the next entry
+                        carry_over_desc = (carry_over_desc or []) + [stripped]
+                    elif not re.search(r'^\(GBP\)', stripped):
                         # Check if previous transaction is complete (has amounts but not yet emitted)
                         if len(current_amounts) >= 2 and not pending_year_digit:
                             # Transaction is complete but not emitted yet
@@ -425,7 +438,10 @@ class MonzoTransactionParser(BaseTransactionParser):
                             # Normal continuation line for current transaction
                             current_description_lines.append(stripped)
 
-            # Handle final transaction for this range
+            # Handle final transaction for this range; lead-in text with no entry after it stays with the last one
+            if carry_over_desc:
+                current_description_lines.extend(carry_over_desc)
+                carry_over_desc = None
             if txn_is_complete():
                 emit_current()
 

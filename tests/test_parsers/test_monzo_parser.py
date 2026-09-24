@@ -79,3 +79,32 @@ def test_monzo_business_account_layout_parsed(monzo_config):
     pot = next(t for t in transactions if "Transfer from Pot" in t.description)
     assert pot.money_in == pytest.approx(15.00, abs=0.01)
     assert pot.balance == pytest.approx(16.99, abs=0.01)
+
+
+# An entry whose date line carries no text: Monzo centres the text on the date, with the payee above and the
+# reference below. The payee line belongs to the entry that follows it, not to the pot transfer before it.
+MONZO_CENTRED_TEXT = """\
+                                          Personal Account statement
+                                                          13/03/2025 - 13/03/2026
+
+ Date           Description                                   (GBP) Amount          (GBP) Balance
+
+ 22/07/2025     Transfer from Pot                                        20.00                  20.00
+
+                Sample Bookmaker (Faster Payments) Reference:
+ 22/07/2025                                                             -20.00                   0.00
+                REF0000000000000001
+
+ 21/07/2025     Transfer from Pot                                        20.00                  20.00
+
+Monzo Bank Limited is registered in England and Wales (No. 09446231).
+"""
+
+
+def test_monzo_centred_entry_takes_the_payee_above_its_date(monzo_config):
+    parser = MonzoTransactionParser(monzo_config)
+    transactions = parser.parse_transactions(MONZO_CENTRED_TEXT, datetime(2025, 3, 13), datetime(2026, 3, 13))
+    assert len(transactions) == 3
+    payment = next(t for t in transactions if t.money_out)
+    assert "Sample Bookmaker" in payment.description and "REF0000000000000001" in payment.description
+    assert all(t.description == "Transfer from Pot" for t in transactions if t.money_in)
