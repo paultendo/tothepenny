@@ -89,8 +89,15 @@ class BalanceValidator:
 
         # Single statement - validate normally
         logger.info(f"Validating {len(ordered_transactions)} transactions")
-        logger.debug(f"Opening balance: £{opening_balance:.2f}")
+        logger.debug("Opening balance: %s", 'unknown' if opening_balance is None else f"£{opening_balance:.2f}")
 
+        if opening_balance is None:
+            first = ordered_transactions[0]
+            if first.balance is None:
+                return ValidationResult(success=False,
+                                        message="The opening balance is unknown and the first entry prints no balance")
+            # The first entry's printed balance shows what the balance was before it
+            opening_balance = first.balance - first.money_in + first.money_out
         calculated_balance = opening_balance
 
         for i, txn in enumerate(ordered_transactions):
@@ -300,6 +307,11 @@ class BalanceValidator:
             )
 
         # For single-period statements, validate totals normally
+        if statement.opening_balance is None or statement.closing_balance is None:
+            return ValidationResult(
+                success=False,
+                message="The statement's opening or closing balance was not found, so its totals cannot be checked"
+            )
         actual_opening = statement.opening_balance
 
         # Calculate totals
@@ -401,15 +413,15 @@ class BalanceValidator:
 
         is_combined = (
             brought_forward_count > 1 or
-            (statement.opening_balance == 0.0 and statement.closing_balance == 0.0)
+            (statement.opening_balance is None and statement.closing_balance is None)
         )
 
         if is_combined:
             logger.info(
                 f"Skipping statement totals validation for combined statement "
                 f"(BROUGHT FORWARD markers: {brought_forward_count}, "
-                f"opening: £{statement.opening_balance:.2f}, "
-                f"closing: £{statement.closing_balance:.2f})"
+                f"opening: {'unknown' if statement.opening_balance is None else f'£{statement.opening_balance:.2f}'}, "
+                f"closing: {'unknown' if statement.closing_balance is None else f'£{statement.closing_balance:.2f}'})"
             )
         else:
             total_result = self.validate_statement_totals(statement, transactions)

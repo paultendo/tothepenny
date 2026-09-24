@@ -28,6 +28,10 @@ from .utils import setup_logger, log_extraction_audit
 from .utils.spreadsheet_safety import clean_text
 
 
+def _money_text(value) -> str:
+    return 'unknown' if value is None else f"£{value:.2f}"
+
+
 def _clean_result_text(result: ExtractionResult) -> None:
     """A statement's text can carry control characters that no workbook can hold; replace them before export."""
     for item in [result.statement, *result.transactions]:
@@ -656,10 +660,7 @@ class ExtractionPipeline:
             opening_balance = parse_currency(extracted.get('previous_balance'))
             closing_balance = parse_currency(extracted.get('new_balance'))
 
-            if opening_balance is None:
-                opening_balance = 0.0
-            if closing_balance is None:
-                closing_balance = 0.0
+            # A figure the statement does not print stays unknown (None); 0.00 is a real balance
 
             # Capture original metadata period before any adjustments
             metadata_start = statement_start
@@ -930,9 +931,9 @@ class ExtractionPipeline:
             logger.info("Running-balance reader did not reconcile (%s)", result.reason)
             return []
         self._running_balance_flips = result.flipped
-        if statement.opening_balance in (None, 0.0) and result.opening is not None:
+        if statement.opening_balance is None and result.opening is not None:
             statement.opening_balance = result.opening
-        if statement.closing_balance in (None, 0.0) and result.closing is not None:
+        if statement.closing_balance is None and result.closing is not None:
             statement.closing_balance = result.closing
         transactions = []
         for row in result.rows:
@@ -1430,11 +1431,11 @@ class ExtractionPipeline:
 
                     logger.info("Combined statement balance correction:")
                     logger.info(
-                        f"  Opening: £{statement.opening_balance:.2f} → £{calculated_opening:.2f} "
+                        f"  Opening: {_money_text(statement.opening_balance)} → £{calculated_opening:.2f} "
                         f"(from {first_with_balance.date.date()})"
                     )
                     logger.info(
-                        f"  Closing: £{statement.closing_balance:.2f} → £{calculated_closing:.2f} "
+                        f"  Closing: {_money_text(statement.closing_balance)} → £{calculated_closing:.2f} "
                         f"(from {last_with_balance.date.date()})"
                     )
 
@@ -1508,10 +1509,11 @@ class ExtractionPipeline:
                 calculated_opening = statement.opening_balance
                 logger.warning("No transaction balances available to derive opening balance")
 
-        if calculated_opening is not None and abs((statement.opening_balance or 0.0) - calculated_opening) > tolerance:
+        if calculated_opening is not None and (statement.opening_balance is None
+                                               or abs(statement.opening_balance - calculated_opening) > tolerance):
             logger.info(
-                "Adjusting opening balance metadata £%.2f → £%.2f",
-                statement.opening_balance or 0.0,
+                "Adjusting opening balance metadata %s → £%.2f",
+                _money_text(statement.opening_balance),
                 calculated_opening
             )
             statement.opening_balance = calculated_opening
@@ -1523,10 +1525,11 @@ class ExtractionPipeline:
             calculated_closing = statement.closing_balance
             logger.warning("No transaction balances available to derive closing balance")
 
-        if calculated_closing is not None and abs((statement.closing_balance or 0.0) - calculated_closing) > tolerance:
+        if calculated_closing is not None and (statement.closing_balance is None
+                                               or abs(statement.closing_balance - calculated_closing) > tolerance):
             logger.info(
-                "Adjusting closing balance metadata £%.2f → £%.2f",
-                statement.closing_balance or 0.0,
+                "Adjusting closing balance metadata %s → £%.2f",
+                _money_text(statement.closing_balance),
                 calculated_closing
             )
             statement.closing_balance = calculated_closing
@@ -1682,15 +1685,13 @@ class ExtractionPipeline:
             end_date = last_date
 
         # Calculate opening/closing balance from transactions
-        opening_balance = metadata.get('opening_balance', 0.0) or 0.0
-        closing_balance = metadata.get('closing_balance', 0.0) or 0.0
+        opening_balance = metadata.get('opening_balance')
+        closing_balance = metadata.get('closing_balance')
 
         if transactions and sorted_txns:
             # Calculate opening from first transaction
             first_txn = sorted_txns[0]
-            calculated_opening = first_txn.balance - first_txn.money_in + first_txn.money_out
-            if abs(calculated_opening) > 0.01:
-                opening_balance = calculated_opening
+            opening_balance = first_txn.balance - first_txn.money_in + first_txn.money_out
 
             # Use last transaction balance as closing
             closing_balance = sorted_txns[-1].balance

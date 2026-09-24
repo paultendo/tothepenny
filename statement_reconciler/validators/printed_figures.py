@@ -65,8 +65,12 @@ def money_is_conserved(opening: Optional[float], closing: Optional[float], trans
     """
     rows = list(transactions)
     opens = lambda t: 'BROUGHT FORWARD' in t.description.upper() or 'PERIOD_BREAK' in t.description.upper()
-    if not rows:
-        return False, 'No transactions were read.'
+    marker = lambda t: opens(t) or 'CARRIED FORWARD' in t.description.upper()
+    if not any(t.money_in or t.money_out for t in rows) and not all(marker(t) for t in rows):
+        # With nothing paid in or out, only a carried balance can stand (a statement with no activity). Ordinary
+        # rows that carry a balance but move nothing are an amount read as a balance: a fee notice's "£38.00"
+        # would otherwise "reconcile" against itself.
+        return False, 'No transaction that moves money was read.'
     if opens(rows[0]) and rows[0].balance is not None:
         start, first = rows[0].balance, 1
     elif opening is not None:

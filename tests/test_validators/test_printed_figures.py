@@ -98,3 +98,16 @@ def test_small_print_read_as_payments_breaks_the_chain():
     rows = [entry(1, 0.0, 10.00, 90.00), entry(1, 0.0, 2.94, None)]
     ok, _ = money_is_conserved(100.00, 90.00, rows)
     assert not ok
+
+
+def test_balances_with_no_money_moved_prove_nothing():
+    from statement_reconciler.validators.printed_figures import money_is_conserved
+    ok, reason = money_is_conserved(38.00, 38.00, [entry(1, 0.0, 0.0, 38.00), entry(2, 0.0, 0.0, 38.00)])
+    assert not ok
+    assert 'moves money' in reason
+
+
+def test_a_statement_with_no_activity_carries_its_balance():
+    from statement_reconciler.validators.printed_figures import money_is_conserved
+    ok, reason = money_is_conserved(0.02, 0.02, [marker(11, 0.02)])
+    assert ok, reason
