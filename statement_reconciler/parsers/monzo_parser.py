@@ -134,7 +134,7 @@ class MonzoTransactionParser(BaseTransactionParser):
             r'--- Page \d+ ---|^\s*Page \d+\s*$|Important information|'
             r'FSCS|www\.monzo\.com|Compensation Scheme|'
             r'^\s*\(GBP\)\s*\(GBP\)\s*$|authorised by the|regulated by the|'
-            r'Date\s+Description\s+Amount\s+Balance|(?:Personal|Business) Account\s*$|'
+            r'Date\s+Description\s+(?:\(GBP\)\s*)?Amount\s+(?:\(GBP\)\s*)?Balance|(?:Personal|Business) Account\s*$|'
             r'^\s*statement\s*$|Balance in Pots|Total outgoings|Total deposits|'
             r'Excluding all Pots|Regular Pots with Monzo|Savings Pots with external|'
             r'Sort code:|Account number:|BIC:|IBAN:',
