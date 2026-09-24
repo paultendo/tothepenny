@@ -285,6 +285,11 @@ def write_batch_report_csv(summary: BatchRunSummary, report_path: Path) -> None:
         'processing_time',
         'output',
         'json',
+        'account',
+        'period_start',
+        'period_end',
+        'opening',
+        'closing',
     ]
 
     with report_path.open('w', newline='', encoding='utf-8') as handle:
@@ -304,6 +309,11 @@ def write_batch_report_csv(summary: BatchRunSummary, report_path: Path) -> None:
                 'processing_time': result.processing_time or '',
                 'output': result.output,
                 'json': result.json or '',
+                'account': result.account or '',
+                'period_start': result.period_start or '',
+                'period_end': result.period_end or '',
+                'opening': '' if result.opening is None else result.opening,
+                'closing': '' if result.closing is None else result.closing,
             }.items()})
 
 
