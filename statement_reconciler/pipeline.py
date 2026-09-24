@@ -313,6 +313,11 @@ class ExtractionPipeline:
                         logger.info("✓ Reconciled by the running-balance reader")
                         balance_reconciled, transactions, statement, warnings = ok, txns, trial, notes
 
+            # Every transaction's page, for citing it: where its parser did not record one, the page that prints its
+            # balance (or amount), searching forward from the previous transaction's page, else the nearest page.
+            if file_path.suffix.lower() == '.pdf':
+                self._locate_pages(file_path, transactions)
+
             # 2e. Calculate overall confidence
             overall_confidence = self._calculate_overall_confidence(
                 transactions,
@@ -897,6 +902,33 @@ class ExtractionPipeline:
         return transactions[:last + 1], (f"{dropped} line{'s' if dropped > 1 else ''} after the closing balance "
                                          f"{'were' if dropped > 1 else 'was'} small print, not transactions, and "
                                          f"{'were' if dropped > 1 else 'was'} left out.")
+
+    @staticmethod
+    def _locate_pages(file_path: Path, transactions: list) -> None:
+        from .validators.printed_figures import printed_figures
+        try:
+            from .extractors.page_reader import read_pages
+            pages = [printed_figures(' '.join(w['text'] for w in page.words)) for page in read_pages(file_path)]
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Pages could not be read to locate transactions (%s)", exc)
+            return
+        cursor = 0
+        for txn in transactions:
+            if txn.page_number:
+                cursor = max(cursor, txn.page_number - 1)
+                continue
+            for value in (txn.balance, txn.money_in or txn.money_out):
+                if value is None or not value:
+                    continue
+                target = round(abs(value), 2)
+                found = next((i for i in range(cursor, len(pages)) if target in pages[i]), None)
+                if found is None:
+                    # read out of page order (newest first, or a combined file sorted by date): the nearest page
+                    found = min((i for i in range(len(pages)) if target in pages[i]),
+                                key=lambda i: abs(i - cursor), default=None)
+                if found is not None:
+                    txn.page_number, cursor = found + 1, found
+                    break
 
     def _require_printed_figures(self, file_path: Path, text: str, statement: Statement, transactions: list,
                                  warnings: list) -> Tuple[bool, list]:

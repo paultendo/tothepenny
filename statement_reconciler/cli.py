@@ -215,6 +215,10 @@ def batch(directory, output_dir, format, bank, json_dir, manifest, limit, skip_e
     report_path = output_dir / "batch_report.csv"
     write_batch_report_csv(summary, report_path)
 
+    from .batch_runner import write_all_transactions_csv
+    combined = write_all_transactions_csv(summary, output_dir / "all_transactions.csv")
+    console.print(f"[cyan]All transactions:[/cyan] {combined} from reconciled statements (all_transactions.csv)")
+
     from .coverage import account_coverage, write_coverage_csv
     findings = account_coverage(summary.results)
     write_coverage_csv(findings, output_dir / "coverage_report.csv")

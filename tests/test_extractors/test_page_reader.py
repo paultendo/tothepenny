@@ -106,3 +106,22 @@ def test_a_ruled_table_is_read_from_its_drawn_lines(tmp_path):
     table = read_pages(_pdf(tmp_path / 'g.pdf', draw))[0].tables(('date', 'libelle', 'debit', 'credit'))[0]
     assert table[0] == ['Date', 'Libellé des opérations', 'Débit', 'Crédit']
     assert table[1] == ['01.10', 'Virement vers un compte\nsuite du libellé', '1 500,00', '']
+
+
+def test_each_transaction_is_placed_on_the_page_that_prints_its_balance(tmp_path):
+    from datetime import datetime
+    from statement_reconciler.models import Transaction
+    from statement_reconciler.pipeline import ExtractionPipeline
+
+    path = tmp_path / 'h.pdf'
+    c = canvas.Canvas(str(path), pagesize=(595, 842))
+    c.drawString(72, 742, '01 Jan  Card payment   10.00   90.00')
+    c.showPage()
+    c.drawString(72, 742, '02 Jan  Salary   500.00   590.00')
+    c.drawString(72, 730, '03 Jan  Rent   400.00   190.00')
+    c.showPage()
+    c.save()
+    rows = [Transaction(datetime(2026, 1, d), what, i, o, b) for d, what, i, o, b in
+            ((1, 'Card payment', 0.0, 10.0, 90.0), (2, 'Salary', 500.0, 0.0, 590.0), (3, 'Rent', 0.0, 400.0, 190.0))]
+    ExtractionPipeline._locate_pages(path, rows)
+    assert [t.page_number for t in rows] == [1, 2, 2]

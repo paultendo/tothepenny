@@ -41,6 +41,8 @@ class BatchFileResult:
     period_end: Optional[str] = None
     opening: Optional[float] = None
     closing: Optional[float] = None
+    # A reconciled statement's transactions, for the combined dataset (not written to the report or manifest)
+    rows: List[dict] = field(default_factory=list, repr=False)
 
 
 @dataclass
@@ -59,7 +61,7 @@ class BatchRunSummary:
             'root_directory': self.root_directory,
             'output_directory': self.output_directory,
             'generated_at': self.generated_at,
-            'results': [asdict(result) for result in self.results],
+            'results': [{k: v for k, v in asdict(result).items() if k != 'rows'} for result in self.results],
             'totals': self.totals,
         }
 
@@ -131,6 +133,17 @@ def _process_file(
             row.period_start = stmt.statement_start_date.date().isoformat() if stmt.statement_start_date else None
             row.period_end = stmt.statement_end_date.date().isoformat() if stmt.statement_end_date else None
             row.opening, row.closing = stmt.opening_balance, stmt.closing_balance
+        if result.balance_reconciled:
+            row.rows = [{
+                'Date': t.date.strftime('%Y-%m-%d') if t.date else '',
+                'Account': row.account or '',
+                'Source file': file_path.name,
+                'Source page': t.page_number or '',
+                'Description': t.description,
+                'Paid In': round(t.money_in, 2) if t.money_in else '',
+                'Withdrawn': round(t.money_out, 2) if t.money_out else '',
+                'Balance': round(t.balance, 2) if t.balance is not None else '',
+            } for t in result.transactions if t.money_in or t.money_out]
         return row, ('success' if result.success else 'failure'), (result if keep_result and result.success else None)
     except Exception as exc:  # noqa: BLE001
         return BatchFileResult(file=file_path.name, output=str(output_path), json=str(json_path) if json_path else None,
@@ -212,6 +225,24 @@ def write_manifest(summary: BatchRunSummary, manifest_path: Path) -> None:
     """Persist a BatchRunSummary manifest to disk."""
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(summary.to_manifest(), indent=2), encoding='utf-8')
+
+
+ALL_TRANSACTIONS_FIELDS = ['Date', 'Account', 'Source file', 'Source page', 'Description', 'Paid In', 'Withdrawn',
+                           'Balance']
+
+
+def write_all_transactions_csv(summary: BatchRunSummary, path: Path) -> int:
+    """Every transaction of every reconciled statement, in date order, each citing its file and page: the combined
+    dataset the analysis reads. Statements that did not reconcile are left out (the batch report lists them)."""
+    import csv
+    rows = [r for result in summary.results for r in result.rows]
+    rows.sort(key=lambda r: (r['Account'], r['Date'], r['Source file']))
+    with path.open('w', newline='', encoding='utf-8') as handle:
+        writer = csv.DictWriter(handle, fieldnames=ALL_TRANSACTIONS_FIELDS)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({k: csv_safe(r[k]) for k in ALL_TRANSACTIONS_FIELDS})
+    return len(rows)
 
 
 def write_batch_report_csv(summary: BatchRunSummary, report_path: Path) -> None:

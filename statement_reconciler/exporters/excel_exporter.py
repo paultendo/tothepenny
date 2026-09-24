@@ -164,7 +164,7 @@ class ExcelExporter:
             headers.append("Description (English)")
         if has_currency:
             headers.append("Currency")
-        headers.extend(["Money In", "Money Out", "Balance", "Type", "Confidence %"])
+        headers.extend(["Money In", "Money Out", "Balance", "Type", "Confidence %", "Source page"])
 
         money_in_col = headers.index("Money In") + 1
         money_out_col = headers.index("Money Out") + 1
@@ -198,7 +198,8 @@ class ExcelExporter:
                 txn.money_out if txn.money_out > 0 else "",
                 txn.balance,
                 txn.transaction_type.value if txn.transaction_type else "",
-                round(txn.confidence, 1)
+                round(txn.confidence, 1),
+                txn.page_number or "",
             ])
 
             for col, value in enumerate(values, 1):
