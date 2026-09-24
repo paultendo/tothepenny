@@ -215,6 +215,14 @@ def batch(directory, output_dir, format, bank, json_dir, manifest, limit, skip_e
     report_path = output_dir / "batch_report.csv"
     write_batch_report_csv(summary, report_path)
 
+    from .coverage import account_coverage, write_coverage_csv
+    findings = account_coverage(summary.results)
+    write_coverage_csv(findings, output_dir / "coverage_report.csv")
+    gaps = [f for f in findings if f['kind'] != 'joined']
+    if findings:
+        console.print(f"[cyan]Coverage:[/cyan] {len(findings) - len(gaps)} statement joins follow on; "
+                      f"{len(gaps)} gaps, overlaps or duplicates (coverage_report.csv)")
+
     totals = summary.totals
     console.print(
         f"\n[green]Batch complete[/green] — {totals['successes']} succeeded, {totals['failures']} failed, {totals['skipped']} skipped"

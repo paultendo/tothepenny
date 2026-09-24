@@ -29,6 +29,10 @@ from .utils import setup_logger, log_extraction_audit
 from .utils.spreadsheet_safety import clean_text
 
 
+SUMMARY_BALANCE_FIELDS = {'previous_balance', 'new_balance', 'opening_balance', 'closing_balance', 'start_balance',
+                          'end_balance'}
+
+
 def _money_text(value) -> str:
     return 'unknown' if value is None else f"£{value:.2f}"
 
@@ -268,6 +272,17 @@ class ExtractionPipeline:
                     notes.append(trailing)
                 if ok and perform_validation:
                     ok, notes = self._require_printed_figures(file_path, text, trial, candidate, notes)
+                if ok and perform_validation and not getattr(page_statement, '_is_combined', False) \
+                        and getattr(page_statement, '_summary_count', 0) == 1:
+                    # The statement's own summary figures are never overwritten: a reading that ends elsewhere has
+                    # missed or misread something (two May transactions lost on one NatWest statement passed while
+                    # the printed closing was replaced by the last balance read).
+                    for label, printed, read in (('opening', page_statement.opening_balance, trial.opening_balance),
+                                                 ('closing', page_statement.closing_balance, trial.closing_balance)):
+                        if printed is not None and read is not None and abs(printed - read) > 0.005:
+                            ok = False
+                            notes = list(notes) + [f"The transactions read give an {label} balance of {read:.2f}, but "
+                                                   f"the statement prints {printed:.2f}."]
                 return ok, candidate, trial, notes
 
             balance_reconciled, transactions, statement, warnings = judge(transactions)
@@ -564,6 +579,7 @@ class ExtractionPipeline:
 
         # Extract fields using patterns
         extracted = {}
+        summary_counts = {}
         for field_name, pattern in header_patterns.items():
             match = re.search(pattern, text, re.MULTILINE)
             if match:
@@ -581,6 +597,11 @@ class ExtractionPipeline:
                     value = re.sub(r'(\d)([A-Za-z])', r'\1 \2', value)
                     value = re.sub(r'([A-Za-z])(\d)', r'\1 \2', value)
                     value = re.sub(r'\s+', ' ', value).strip()
+                if field_name in SUMMARY_BALANCE_FIELDS and isinstance(value, str) \
+                        and re.match(r'\s*(?:OD|DR|D)\b', text[match.end():]) and not value.startswith('-'):
+                    value = '-' + value  # an overdrawn marker after the figure ("£298.66 OD")
+                if field_name in SUMMARY_BALANCE_FIELDS:
+                    summary_counts[field_name] = len(re.findall(pattern, text, re.MULTILINE))
                 extracted[field_name] = value
                 logger.debug(f"Found {field_name}: {extracted[field_name]}")
 
@@ -691,6 +712,9 @@ class ExtractionPipeline:
 
             # Store combined statement flag for later use
             statement._is_combined = is_combined_statement
+            # How many statement summaries the file holds: the printed opening and closing speak for the whole file
+            # only when there is one.
+            statement._summary_count = max(summary_counts.values(), default=0)
 
             # Log metadata extraction
             if statement_start and statement_end:

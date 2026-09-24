@@ -35,6 +35,12 @@ class BatchFileResult:
     warnings: List[str] = field(default_factory=list)
     error: Optional[str] = None
     processing_time: Optional[float] = None
+    # For the coverage check across statements of one account
+    account: Optional[str] = None
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
+    opening: Optional[float] = None
+    closing: Optional[float] = None
 
 
 @dataclass
@@ -119,6 +125,12 @@ def _process_file(
             error=result.error_message if not result.success else None,
             processing_time=result.processing_time,
         )
+        stmt = result.statement
+        if stmt is not None:
+            row.account = ' '.join(x for x in (stmt.sort_code, stmt.account_number) if x) or None
+            row.period_start = stmt.statement_start_date.date().isoformat() if stmt.statement_start_date else None
+            row.period_end = stmt.statement_end_date.date().isoformat() if stmt.statement_end_date else None
+            row.opening, row.closing = stmt.opening_balance, stmt.closing_balance
         return row, ('success' if result.success else 'failure'), (result if keep_result and result.success else None)
     except Exception as exc:  # noqa: BLE001
         return BatchFileResult(file=file_path.name, output=str(output_path), json=str(json_path) if json_path else None,
