@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 class NationwideParser(BaseTransactionParser):
     """Parser for Nationwide Building Society statements."""
 
-    AMOUNT_TOKEN = re.compile(r'^[£]?\d[\d,]*\.\d{2}$')
+    # An overdrawn balance is printed with a minus sign ("-328.99"; "£-493.15" in the side panel, the £ stripped first).
+    AMOUNT_TOKEN = re.compile(r'^-?[£]?\d[\d,]*\.\d{2}$')
 
     INFO_BOX_KEYWORDS = [
         "credit interest",
@@ -134,9 +135,16 @@ class NationwideParser(BaseTransactionParser):
             "refund"
         ]
 
+        current_page = None
         while idx < total_rows:
             row = filtered_rows[idx]
             row_text = row['text']
+            # A page's rows are transactions only below that page's own table heading: the summary box and the
+            # information pages after the last transaction page carry figures in the same columns (the overdraft
+            # interest example read as a transaction in the FlexDirect layout, 28 September 2026).
+            if row.get('page') != current_page:
+                current_page = row.get('page')
+                header_seen = False
             if not row_text:
                 idx += 1
                 continue
@@ -614,7 +622,8 @@ class NationwideParser(BaseTransactionParser):
 
         if header_row:
             for word in header_row['words']:
-                token = (word.get('text') or '').lower()
+                # The reader joins a pound sign to the word after it ("£In"), so the heading is read without it.
+                token = (word.get('text') or '').lower().lstrip('£')
                 if token == 'date':
                     metrics['date_x1'] = word.get('x1', metrics['date_x1']) + 4
                 elif token.startswith('description'):

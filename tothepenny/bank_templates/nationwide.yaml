@@ -20,9 +20,10 @@ nationwide:
     # Statement date from header: "Statement date: 23 March 2023"
     statement_date: "Statement(?:\\s*date:|date:)?\\s*(\\d{1,2}\\s*[A-Za-z]+\\s*\\d{4})"
     # Start balance: "Start balance                        £49.50"
-    previous_balance: "Start balance\\s+£([\\d,]+\\.\\d{2})"
+    # An overdrawn account prints the sign after the pound: "Start balance £-328.99"
+    previous_balance: "Start balance\\s+£(-?[\\d,]+\\.\\d{2})"
     # End balance: "End balance                          £316.17"
-    new_balance: "End balance\\s+£([\\d,]+\\.\\d{2})"
+    new_balance: "End balance\\s+£(-?[\\d,]+\\.\\d{2})"
 
   date_formats:
     - "%d %b %Y"      # "15 Jan 2025"

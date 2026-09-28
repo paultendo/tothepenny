@@ -80,3 +80,54 @@ def test_nationwide_rows_directions_and_balances(nationwide_config):
         balance = round(balance + t.money_in - t.money_out, 2)
         if t.balance is not None:
             assert t.balance == pytest.approx(balance)
+
+
+def _flexdirect_layout():
+    """The FlexDirect layout (seen 28 September 2026): an overdrawn account, balances printed with a minus sign, the
+    heading's pound sign joined to its word ("£In"), and an information page after the last transaction page whose
+    figures sit in the same columns."""
+    words = []
+
+    def put(page, top, x0, text, x1=None):
+        words.append((page, {"text": text, "x0": x0, "x1": x1 if x1 is not None else x0 + 5 * len(text), "top": top}))
+
+    def amount(page, top, column, value):
+        right = {"out": 290.0, "in": 342.0, "balance": 412.0}[column]
+        put(page, top, right - 5 * len(value), value, right)
+
+    def heading(page):
+        put(page, 100, 60, "Date", 80); put(page, 100, 92, "Description", 150)
+        put(page, 100, 270, "£", 275); put(page, 100, 276, "Out", 286)
+        put(page, 100, 325, "£In", 338)
+        put(page, 100, 380, "£", 385); put(page, 100, 386, "Balance", 408)
+
+    heading(1)
+    put(1, 100, 450, "End", 470); put(1, 100, 540, "£-60.00", 575)
+    put(1, 120, 60, "2026", 80); put(1, 120, 92, "Balance"); put(1, 120, 130, "from"); put(1, 120, 155, "statement")
+    put(1, 120, 205, "5"); put(1, 120, 215, "dated"); put(1, 120, 245, "17/02/2026"); amount(1, 120, "balance", "-20.00")
+    put(1, 140, 60, "18", 70); put(1, 140, 72, "Feb", 85); put(1, 140, 92, "Contactless"); put(1, 140, 150, "Payment")
+    amount(1, 140, "out", "30.00"); amount(1, 140, "balance", "-50.00")
+    put(1, 150, 92, "SHOP"); put(1, 150, 118, "ONE")
+    heading(2)
+    put(2, 120, 60, "2026", 80); amount(2, 120, "balance", "-50.00")
+    put(2, 140, 60, "19", 70); put(2, 140, 72, "Feb", 85); put(2, 140, 92, "Arranged"); put(2, 140, 140, "Overdraft")
+    put(2, 140, 190, "Interest"); amount(2, 140, "out", "10.00"); amount(2, 140, "balance", "-60.00")
+    # Information page: no heading, but an example charge in the money column.
+    put(3, 140, 92, "Arranged"); put(3, 140, 140, "Overdraft"); put(3, 140, 190, "Interest"); amount(3, 140, "out", "4.96")
+    pages = {}
+    for page, w in words:
+        pages.setdefault(page, []).append(w)
+    return [{"page_number": p, "words": ws} for p, ws in sorted(pages.items())]
+
+
+def test_flexdirect_overdrawn_balances_and_information_pages(nationwide_config):
+    parser = NationwideParser(nationwide_config)
+    parser.set_word_layout(_flexdirect_layout())
+    txns = parser.parse_transactions("", datetime(2026, 2, 17), datetime(2026, 3, 17))
+    rows = [(t.description.split()[0], t.money_in, t.money_out, t.balance) for t in txns if t.description != "NATIONWIDE_PERIOD_BREAK"]
+    assert rows == [
+        ("Contactless", 0.0, 30.0, -50.0),
+        ("Arranged", 0.0, 10.0, -60.0),
+    ]
+    breaks = [t.balance for t in txns if t.description == "NATIONWIDE_PERIOD_BREAK"]
+    assert breaks[0] == -20.0
