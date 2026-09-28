@@ -25,7 +25,8 @@ barclays:
     # Account number
     account_number: "Account no\\.?\\s*(\\d{8})"
     # Sort code
-    sort_code: "Sort code\\s*(\\d{2}[-\\s]?\\d{2}[-\\s]?\\d{2})"
+    # Either case: the annual statement prints "Sort Code".
+    sort_code: "(?i:Sort code)\\s*(\\d{2}[-\\s]?\\d{2}[-\\s]?\\d{2})"
     # Statement period
     statement_date: "Statement date\\s+(\\d{1,2}\\s+\\w{3}\\s+\\d{4})"
     period_start: "(?i)(\\d{1,2}\\s+\\w{3}\\s+\\d{4})\\s*-\\s*\\d{1,2}\\s+\\w{3}\\s+\\d{4}"
