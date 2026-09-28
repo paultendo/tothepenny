@@ -135,6 +135,9 @@ def _process_file(
         stmt = result.statement
         if stmt is not None:
             row.account = ' '.join(x for x in (stmt.sort_code, stmt.account_number) if x) or None
+            if len(stmt.accounts) > 1:  # every account the file holds, with its pages
+                row.account = '; '.join(f"{' '.join(x for x in (e.get('sort_code'), e.get('account_number')) if x)} "
+                                        f"(pages {e['pages'][0]}-{e['pages'][-1]})" for e in stmt.accounts)
             row.holder = stmt.account_holder
             # Every address in the file, with its pages when it changes partway through.
             row.address = '; '.join(f"{e['address']} (pages {e['pages'][0]}-{e['pages'][-1]})" for e in stmt.account_addresses) if len(stmt.account_addresses) > 1 else stmt.account_address

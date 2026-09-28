@@ -51,6 +51,9 @@ def _name_key(tokens: List[str]) -> Optional[tuple]:
     """(first forename, surname) without title, middle names or initials, and '&': the holder's name matches the
     name above the address however the statement prints it ("Mrs Yaffa Jones" and "Ms Yaffa Jones"; "Michelle Mary
     Butler" and "Michelle M Butler")."""
+    # A title the PDF's text layer ran into the next initial ("MrW MK Marsh") is split off first.
+    glued = re.compile(r"^(Miss|Mrs|Ms|Mr|Dr)([A-Z].*)$")  # title case then a capital: "MrW", never "MRS"
+    tokens = [part for t in tokens for part in (glued.match(t).groups() if t.lower() not in TITLES and glued.match(t) else (t,))]
     words = [t.strip(".,").lower() for t in tokens if t.strip(".,&")]
     words = [w for w in words if w not in TITLES]
     return (words[0], words[-1]) if len(words) >= 2 else None
@@ -72,7 +75,15 @@ def _name_start(row: List[dict], key: tuple) -> Optional[int]:
             if phrase and word["x0"] - phrase[-1]["x1"] > WORD_GAP:
                 break
             phrase.append(word)
-        if _same_person(_name_key([w["text"] for w in phrase]), key):
+        # A joint name on one line ("Mr A Example & Mrs B Other") is the holder's when either person is.
+        people, current = [], []
+        for w in phrase:
+            if w["text"].strip() in ("&", "and", "AND"):
+                people.append(current); current = []
+            else:
+                current.append(w["text"])
+        people.append(current)
+        if any(_same_person(_name_key(p), key) for p in people):
             return start
     return None
 

@@ -288,6 +288,9 @@ class ExcelExporter:
             ("Address", stmt.account_address or "Not found on the statement"),
             *[(f"  Address {i} (pages {', '.join(map(str, e['pages']))})", e['address'])
               for i, e in enumerate(stmt.account_addresses, 1) if len(stmt.account_addresses) > 1],
+            *[(f"  Account {i} (pages {', '.join(map(str, e['pages']))})",
+               ' '.join(x for x in (e.get('sort_code'), e.get('account_number'), e.get('holder')) if x))
+              for i, e in enumerate(stmt.accounts, 1) if len(stmt.accounts) > 1],
             ("Sort Code", stmt.sort_code or "N/A"),
             ("Currency", stmt.currency),
             ("", ""),

@@ -27,6 +27,7 @@ from .config import get_bank_config_loader, BankConfig
 from .utils import setup_logger, log_extraction_audit
 from .utils.spreadsheet_safety import clean_text
 from .utils.postal_address import addresses_by_page
+from .utils.account_details import accounts_by_page
 
 
 SUMMARY_BALANCE_FIELDS = {'previous_balance', 'new_balance', 'opening_balance', 'closing_balance', 'start_balance',
@@ -245,11 +246,16 @@ class ExtractionPipeline:
 
             # The holder's address, by position under their name on every page (never from reflowed text, where a
             # summary printed beside the address runs into it).
-            if statement.account_holder and file_path.suffix.lower() == '.pdf':
+            if file_path.suffix.lower() == '.pdf':
                 try:
                     from .extractors.page_reader import read_pages
-                    statement.account_addresses = addresses_by_page(read_pages(file_path), statement.account_holder)
+                    pages = read_pages(file_path)
+                    statement.account_addresses = addresses_by_page(pages, statement.account_holder)
                     statement.account_address = statement.account_addresses[0]['address'] if statement.account_addresses else None
+                    try:  # its own guard: the accounts reading can never cost the address
+                        statement.accounts = accounts_by_page(pages, bank_config.header_patterns)
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning(f"Accounts by page not read: {e}")
                 except Exception as e:  # noqa: BLE001
                     logger.debug(f"Address not read: {e}")
 
@@ -334,6 +340,12 @@ class ExtractionPipeline:
                 extraction_confidence,
                 balance_reconciled
             )
+
+            # A file of several statements for more than one account: said first, as it bears on everything else.
+            if len(statement.accounts) > 1:
+                listed = '; '.join(f"{' '.join(x for x in (a.get('sort_code'), a.get('account_number')) if x)} (pages "
+                                   f"{a['pages'][0]}-{a['pages'][-1]})" for a in statement.accounts)
+                warnings.insert(0, f"This file holds statements for {len(statement.accounts)} accounts: {listed}")
 
             # Create result
             result = ExtractionResult(

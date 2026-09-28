@@ -24,6 +24,7 @@ class Statement:
         sort_code: Bank sort code (if available)
         account_address: The holder's postal address as printed on the statement (the first found)
         account_addresses: Every distinct address in the file with its pages (a file of several statements may show a move)
+        accounts: Every distinct account in the file with its pages (a file of several statements may hold more than one)
     """
     bank_name: str
     account_number: str
@@ -36,6 +37,7 @@ class Statement:
     sort_code: Optional[str] = None
     account_address: Optional[str] = None
     account_addresses: list[dict] = field(default_factory=list)
+    accounts: list[dict] = field(default_factory=list)
     pots: list[dict] = field(default_factory=list)
     metadata_start_date: Optional[datetime] = None
     metadata_end_date: Optional[datetime] = None
@@ -69,5 +71,6 @@ class Statement:
             'sort_code': self.sort_code,
             'account_address': self.account_address,
             'account_addresses': self.account_addresses,
+            'accounts': self.accounts,
             'pots': pot_payload
         }

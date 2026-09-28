@@ -78,3 +78,21 @@ def test_a_page_object_with_no_words_is_passed_over():
     block = _words([(100, 57, "MR F EXAMPLE"), (110, 57, "3 Test Lane"), (120, 57, "TL3 3TL")])
     assert addresses_by_page([SimpleNamespace(words=[]), SimpleNamespace(words=block)], "MR F EXAMPLE") == [
         {"address": "3 Test Lane, TL3 3TL", "pages": [2]}]
+
+
+def test_a_joint_name_on_one_line_is_the_holders_when_either_person_is():
+    words = _words([(100, 57, "Mr G H Example & Miss J Other"), (110, 57, "9 Test Way"), (120, 57, "TW9 9TW")])
+    assert address_from_words(words, "Mr G H Example") == "9 Test Way, TW9 9TW"
+    assert address_from_words(words, "Miss J Other") == "9 Test Way, TW9 9TW"
+    assert address_from_words(words, "Mr Q Nobody") is None
+
+
+def test_a_title_run_into_the_initial_is_split_off():
+    words = _words([(100, 57, "MrW MK Example"), (110, 57, "4 Test Close"), (120, 57, "TC4 4TC")])
+    assert address_from_words(words, "Mr W M K Example") == "4 Test Close, TC4 4TC"
+
+
+def test_a_title_in_capitals_is_never_split():
+    words = _words([(100, 57, "MRS Y EXAMPLE"), (110, 57, "6 Test Road"), (120, 57, "TR6 6TR")])
+    assert address_from_words(words, "MRS YAFFA EXAMPLE") == "6 Test Road, TR6 6TR"
+    assert address_from_words(words, "MR S EXAMPLE") is None
