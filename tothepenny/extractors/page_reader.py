@@ -552,12 +552,42 @@ def _read(path: str, mtime: float) -> Tuple[Page, ...]:
 
 
 def read_pages(pdf_path: Path) -> Tuple[Page, ...]:
-    """Every page's words, read once per file version and shared by every reader that asks."""
+    """Every page's words, read once per file version and shared by every reader that asks. A page that repeats an
+    earlier one word for word (an exhibit that prints a page twice) is left out, so no reader counts its lines twice;
+    real statement pages never repeat, as their balances move. Each page keeps its own number."""
     path = Path(pdf_path)
-    return _read(str(path.resolve()), path.stat().st_mtime)
+    return _kept(str(path.resolve()), path.stat().st_mtime)[0]
+
+
+def repeated_pages(pdf_path: Path) -> List[Tuple[int, int]]:
+    """(page, the earlier page it repeats word for word) for each repeated page in the file."""
+    path = Path(pdf_path)
+    return list(_kept(str(path.resolve()), path.stat().st_mtime)[1])
+
+
+@lru_cache(maxsize=4)
+def _kept(path: str, mtime: float):
+    """The file's pages without repeats, and the repeats, worked out once per file version."""
+    pages = _read(path, mtime)
+    seen: dict = {}
+    repeats: List[Tuple[int, int]] = []
+    for page in pages:
+        words = tuple((w['text'], round(w['x0'], 1), round(w['top'], 1)) for w in page.words)
+        if not words:
+            continue
+        if words in seen:
+            repeats.append((page.number, seen[words]))
+        else:
+            seen[words] = page.number
+    dropped = {number for number, _ in repeats}
+    return tuple(p for p in pages if p.number not in dropped), tuple(repeats)
 
 
 def layout_text(pdf_path: Path) -> str:
     """Every page laid out as fixed-pitch text, each page ending a line and then a form feed, for the parsers that
     read text by column. Read once per file version and shared."""
-    return ''.join(page.layout() + '\n\f' for page in read_pages(Path(pdf_path)))
+    # A repeated page is an empty page here, so text readers that count pages keep the file's own page numbers.
+    kept = {page.number: page for page in read_pages(Path(pdf_path))}
+    path = Path(pdf_path)
+    every = _read(str(path.resolve()), path.stat().st_mtime)
+    return ''.join((kept[page.number].layout() if page.number in kept else '') + '\n\f' for page in every)

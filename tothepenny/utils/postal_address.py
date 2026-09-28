@@ -119,7 +119,8 @@ def addresses_by_page(pages, holder: Optional[str]) -> List[dict]:
     """Every distinct address under the holder's name across the pages, in order of first appearance, each with the
     pages it appears on: [{"address": ..., "pages": [1, 2, ...]}]."""
     found: List[dict] = []
-    for number, page in enumerate(pages, 1):
+    for index, page in enumerate(pages, 1):
+        number = getattr(page, 'number', None) or index
         # A page object or a plain mapping; a page with no words (a scan, a blank page) simply has no address.
         words = page.words if hasattr(page, "words") else page.get("words", [])
         address = address_from_words(words or [], holder)

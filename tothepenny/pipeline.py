@@ -341,6 +341,25 @@ class ExtractionPipeline:
                 balance_reconciled
             )
 
+            # A page printed twice in the file is read once, and said.
+            if file_path.suffix.lower() == '.pdf':
+                try:
+                    from .extractors.page_reader import repeated_pages
+                    for page, first in repeated_pages(file_path):
+                        warnings.append(f"Page {page} repeats page {first} word for word and was read once")
+                except Exception:  # noqa: BLE001
+                    pass
+
+            # Selected pages rather than whole statements (a court exhibit): each page's lines follow on, but the balance
+            # jumps between pages. Said plainly, with each gap, as the pages to ask for.
+            if not balance_reconciled:
+                gaps = self._gaps_between_pages(transactions)
+                if gaps:
+                    listed = '; '.join(f"page {g['page']} ends {g['ends']:%d %b %Y} at £{g['end']:,.2f}, page {g['next']} "
+                                       f"starts {g['starts']:%d %b %Y} from £{g['start']:,.2f}" for g in gaps)
+                    warnings.insert(0, f"Selected pages, not whole statements: the lines on each page follow on, but the "
+                                       f"balance jumps between pages {len(gaps)} times, where pages are missing: {listed}")
+
             # A file of several statements for more than one account: said first, as it bears on everything else.
             if len(statement.accounts) > 1:
                 listed = '; '.join(f"{' '.join(x for x in (a.get('sort_code'), a.get('account_number')) if x)} (pages "
@@ -576,6 +595,22 @@ class ExtractionPipeline:
 
         logger.error("✗ Could not detect bank")
         return None
+
+    @staticmethod
+    def _gaps_between_pages(transactions) -> list:
+        """The jumps in the balance between one page and the next, when every jump is between pages and none within one;
+        an empty list otherwise (a misread line, not a missing page)."""
+        rows = [t for t in transactions if (t.money_in or t.money_out) and t.balance is not None and t.page_number]
+        gaps = []
+        for a, b in zip(rows, rows[1:]):
+            before = round(b.balance - b.money_in + b.money_out, 2)
+            if abs(before - a.balance) <= 0.005:
+                continue
+            if a.page_number == b.page_number:
+                return []
+            gaps.append({'page': a.page_number, 'ends': a.date, 'end': a.balance, 'next': b.page_number,
+                         'starts': b.date, 'start': before})
+        return gaps
 
     def _extract_statement_metadata(
         self,
@@ -934,14 +969,16 @@ class ExtractionPipeline:
         from .validators.printed_figures import printed_figures
         try:
             from .extractors.page_reader import read_pages
-            pages = [printed_figures(' '.join(w['text'] for w in page.words)) for page in read_pages(file_path)]
+            read = read_pages(file_path)
+            pages = [printed_figures(' '.join(w['text'] for w in page.words)) for page in read]
+            numbers = [page.number for page in read]  # the file's own page numbers (a repeated page is left out)
         except Exception as exc:  # noqa: BLE001
             logger.debug("Pages could not be read to locate transactions (%s)", exc)
             return
         cursor = 0
         for txn in transactions:
             if txn.page_number:
-                cursor = max(cursor, txn.page_number - 1)
+                cursor = max(cursor, next((i for i, n in enumerate(numbers) if n >= txn.page_number), len(numbers) - 1))
                 continue
             for value in (txn.balance, txn.money_in or txn.money_out):
                 if value is None or not value:
@@ -953,7 +990,7 @@ class ExtractionPipeline:
                     found = min((i for i in range(len(pages)) if target in pages[i]),
                                 key=lambda i: abs(i - cursor), default=None)
                 if found is not None:
-                    txn.page_number, cursor = found + 1, found
+                    txn.page_number, cursor = numbers[found], found
                     break
 
     def _require_printed_figures(self, file_path: Path, text: str, statement: Statement, transactions: list,

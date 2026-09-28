@@ -27,7 +27,8 @@ def accounts_by_page(pages, header_patterns: Dict[str, str]) -> List[dict]:
     """[{"sort_code", "account_number", "holder", "pages"}] in order of first appearance; a page without an account
     number of its own belongs to no account here (continuation pages usually print none)."""
     found: List[dict] = []
-    for number, page in enumerate(pages, 1):
+    for index, page in enumerate(pages, 1):
+        number = getattr(page, 'number', None) or index
         try:
             text = page.layout() if hasattr(page, "layout") else page.get("text", "")
         except Exception:  # noqa: BLE001
