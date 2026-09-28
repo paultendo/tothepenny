@@ -286,6 +286,8 @@ class ExcelExporter:
             ("Account Number", stmt.account_number),
             ("Account Holder", stmt.account_holder or "N/A"),
             ("Address", stmt.account_address or "Not found on the statement"),
+            *[(f"  Address {i} (pages {', '.join(map(str, e['pages']))})", e['address'])
+              for i, e in enumerate(stmt.account_addresses, 1) if len(stmt.account_addresses) > 1],
             ("Sort Code", stmt.sort_code or "N/A"),
             ("Currency", stmt.currency),
             ("", ""),

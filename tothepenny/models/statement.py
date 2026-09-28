@@ -22,7 +22,8 @@ class Statement:
         closing_balance: Closing balance
         currency: Currency code (e.g., 'GBP', 'USD')
         sort_code: Bank sort code (if available)
-        account_address: The holder's postal address as printed on the statement (if found)
+        account_address: The holder's postal address as printed on the statement (the first found)
+        account_addresses: Every distinct address in the file with its pages (a file of several statements may show a move)
     """
     bank_name: str
     account_number: str
@@ -34,6 +35,7 @@ class Statement:
     account_holder: Optional[str] = None
     sort_code: Optional[str] = None
     account_address: Optional[str] = None
+    account_addresses: list[dict] = field(default_factory=list)
     pots: list[dict] = field(default_factory=list)
     metadata_start_date: Optional[datetime] = None
     metadata_end_date: Optional[datetime] = None
@@ -66,5 +68,6 @@ class Statement:
             'currency': self.currency,
             'sort_code': self.sort_code,
             'account_address': self.account_address,
+            'account_addresses': self.account_addresses,
             'pots': pot_payload
         }

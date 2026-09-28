@@ -135,7 +135,9 @@ def _process_file(
         stmt = result.statement
         if stmt is not None:
             row.account = ' '.join(x for x in (stmt.sort_code, stmt.account_number) if x) or None
-            row.holder, row.address = stmt.account_holder, stmt.account_address
+            row.holder = stmt.account_holder
+            # Every address in the file, with its pages when it changes partway through.
+            row.address = '; '.join(f"{e['address']} (pages {e['pages'][0]}-{e['pages'][-1]})" for e in stmt.account_addresses) if len(stmt.account_addresses) > 1 else stmt.account_address
             row.period_start = stmt.statement_start_date.date().isoformat() if stmt.statement_start_date else None
             row.period_end = stmt.statement_end_date.date().isoformat() if stmt.statement_end_date else None
             row.opening, row.closing = stmt.opening_balance, stmt.closing_balance

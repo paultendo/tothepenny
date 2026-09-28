@@ -26,7 +26,7 @@ from .exporters import ExcelExporter, generate_output_filename
 from .config import get_bank_config_loader, BankConfig
 from .utils import setup_logger, log_extraction_audit
 from .utils.spreadsheet_safety import clean_text
-from .utils.postal_address import address_from_words
+from .utils.postal_address import addresses_by_page
 
 
 SUMMARY_BALANCE_FIELDS = {'previous_balance', 'new_balance', 'opening_balance', 'closing_balance', 'start_balance',
@@ -243,13 +243,13 @@ class ExtractionPipeline:
                     processing_time=time.time() - start_time
                 )
 
-            # The holder's address, by position under their name on the first page (never from reflowed text, where a
+            # The holder's address, by position under their name on every page (never from reflowed text, where a
             # summary printed beside the address runs into it).
             if statement.account_holder and file_path.suffix.lower() == '.pdf':
                 try:
                     from .extractors.page_reader import read_pages
-                    pages = read_pages(file_path)
-                    statement.account_address = address_from_words(pages[0].words, statement.account_holder) if pages else None
+                    statement.account_addresses = addresses_by_page(read_pages(file_path), statement.account_holder)
+                    statement.account_address = statement.account_addresses[0]['address'] if statement.account_addresses else None
                 except Exception as e:  # noqa: BLE001
                     logger.debug(f"Address not read: {e}")
 

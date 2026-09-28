@@ -14,7 +14,9 @@ santander:
 
   # Statement header fields
   header_patterns:
-    account_name: "^\\s+(MR|MS|MRS|MISS|DR)\\s+([A-Z][\\w\\s'.,-]{2,}?)$"
+    # The whole name, title included (the reader keeps the first group, which was the title alone, "MR"), ending at
+    # the end of the line or a wide gap before text further along the same line.
+    account_name: "^\\s+((?:MR|MS|MRS|MISS|DR)\\s+[A-Z][\\w'.,-]*(?:[ ][A-Z][\\w'.,-]*)+)(?=[ ]{3,}|\\s*$)"
     account_number: "Account number:\\s*(\\d{8})"
     sort_code: "Sort Code:\\s*(\\d{2}\\s+\\d{2}\\s+\\d{2})"
     statement_number: "Statement number:\\s*([\\d/]+)"
