@@ -136,6 +136,12 @@ class NationwideParser(BaseTransactionParser):
         ]
 
         current_page = None
+        # Each statement in the file prints its own year beside its first line ("2024  Balance from statement 143")
+        # and on each continuation page; a file may hold many statements, merged in any order (28 September 2026:
+        # thirteen statements, 144 second and 133 last). Dates take that year, rolling over at the new year.
+        self._block_year = None
+        self._block_month = None
+        pending_statement = None
         while idx < total_rows:
             row = filtered_rows[idx]
             row_text = row['text']
@@ -161,8 +167,17 @@ class NationwideParser(BaseTransactionParser):
                 idx += 1
                 continue
 
+            year_word = next((w.get('text', '') for w in row['words'][:1] if re.fullmatch(r'(19|20)\d{2}', w.get('text', ''))), None)
+            # A new statement sets its year; a continuation page prints the statement's starting year, which must never
+            # take the dates back after they have run into the new year.
+            if year_word and (self._block_year is None or int(year_word) > self._block_year
+                              or self._looks_like_period_break(row_lower)):
+                self._block_year, self._block_month = int(year_word), None
+
             if self._looks_like_period_break(row_lower):
                 pending_period_balance = self._first_amount_value(row['words'])
+                started = re.search(r'balance\s*from\s*statement\s*(\d+)', row_lower)
+                pending_statement = int(started.group(1)) + 1 if started else None
                 current_date = None
                 desc_lines = []
                 idx += 1
@@ -278,10 +293,12 @@ class NationwideParser(BaseTransactionParser):
                         money_out=0.0,
                         balance=marker_balance,
                         transaction_type=None,
-                        confidence=100.0
+                        confidence=100.0,
+                        raw_text=f"statement {pending_statement}" if pending_statement else None
                     )
                 )
                 pending_period_balance = None
+                pending_statement = None
 
             transactions.append(
                 Transaction(
@@ -301,8 +318,25 @@ class NationwideParser(BaseTransactionParser):
                 idx += consumed_rows
             idx += 1
 
+        transactions = self._in_statement_order(transactions)
         logger.info(f"Successfully parsed {len(transactions)} Nationwide transactions via layout parser")
         return transactions
+
+    @staticmethod
+    def _in_statement_order(transactions: List[Transaction]) -> List[Transaction]:
+        """A file of several statements merged out of order is put back in statement-number order, so the balance
+        carries from each statement to the next. Each statement's block starts at its opening marker."""
+        blocks: List[List[Transaction]] = []
+        numbers: List[Optional[int]] = []
+        for t in transactions:
+            started = re.fullmatch(r'statement (\d+)', t.raw_text or '') if t.description == "NATIONWIDE_PERIOD_BREAK" else None
+            if started or not blocks:
+                blocks.append([]); numbers.append(int(started.group(1)) if started else None)
+            blocks[-1].append(t)
+        if len(blocks) < 2 or any(n is None for n in numbers) or numbers == sorted(numbers):
+            return transactions
+        ordered = [b for _, b in sorted(zip(numbers, blocks), key=lambda pair: pair[0])]
+        return [t for b in ordered for t in b]
 
     def _parse_from_lines(
         self,
@@ -675,7 +709,8 @@ class NationwideParser(BaseTransactionParser):
 
     @staticmethod
     def _is_header_row_text(row_text: str) -> bool:
-        row_lower = (row_text or '').lower()
+        # Without spaces: some statements' text layer puts spaces inside words ("Descr iption", "Ba lance").
+        row_lower = re.sub(r'\s+', '', (row_text or '').lower())
         return (
             'date' in row_lower and
             'description' in row_lower and
@@ -726,12 +761,28 @@ class NationwideParser(BaseTransactionParser):
                 break
 
         candidate = self._normalize_spaces(' '.join(tokens))
+        # A date the text layer scattered ("01 Ma y", "0 1F eb") is rebuilt from its characters: day, then month.
+        if re.fullmatch(r'[\d\s]+[A-Za-z\s]+', candidate):
+            closed = re.sub(r'\s+', '', candidate)
+            candidate = re.sub(r'^(\d{1,2})([A-Za-z]+)$', r'\1 \2', closed)
         if not candidate:
             return None
         if 'balance from statement' in candidate.lower():
             return None
         if not re.search(r'\d', candidate) or not re.search(r'[A-Za-z]', candidate):
             return None
+
+        if self._block_year and not re.search(r'\b(19|20)\d{2}\b', candidate):
+            for fmt in ('%d %b %Y', '%d %B %Y'):
+                try:
+                    dated = datetime.strptime(f"{candidate} {self._block_year}", fmt)
+                except ValueError:
+                    continue
+                if self._block_month and dated.month < self._block_month:  # into the new year within one statement
+                    self._block_year += 1
+                    dated = dated.replace(year=self._block_year)
+                self._block_month = dated.month
+                return dated
 
         if statement_start_date and statement_end_date:
             return infer_year_from_period(

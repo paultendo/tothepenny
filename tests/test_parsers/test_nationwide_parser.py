@@ -131,3 +131,48 @@ def test_flexdirect_overdrawn_balances_and_information_pages(nationwide_config):
     ]
     breaks = [t.balance for t in txns if t.description == "NATIONWIDE_PERIOD_BREAK"]
     assert breaks[0] == -20.0
+
+
+def _merged_layout():
+    """Two statements merged out of order (the later one first), each printing its own year beside its opening line,
+    one crossing the new year, and a date the text layer scattered ("0 1F eb")."""
+    pages = []
+
+    def page(number, rows):
+        words = []
+
+        def put(top, x0, text, x1=None):
+            words.append({"text": text, "x0": x0, "x1": x1 if x1 is not None else x0 + 5 * len(text), "top": top})
+
+        put(100, 60, "Date", 80); put(100, 92, "Description", 150)
+        put(100, 270, "£", 275); put(100, 276, "Out", 286)
+        put(100, 325, "£In", 338)
+        put(100, 380, "£", 385); put(100, 386, "Balance", 408)
+        for top, date_words, desc, out, bal, opening in rows:
+            x = 60
+            for d in date_words:
+                put(top, x, d); x += 5 * len(d) + 1
+            if opening:
+                put(top, 92, "Balance"); put(top, 130, "from"); put(top, 155, "statement"); put(top, 205, opening)
+            else:
+                put(top, 92, desc)
+            if out:
+                put(top, 290 - 5 * len(out), out, 290)
+            if bal:
+                put(top, 412 - 5 * len(bal), bal, 412)
+        pages.append({"page_number": number, "words": words})
+
+    # Statement 12 (January to February 2025), placed first in the file.
+    page(1, [(120, ["2025"], None, None, "70.00", "11"), (140, ["0", "1F", "eb"], "SHOP", "5.00", "65.00", None)])
+    # Statement 11 (December 2024 into January 2025), placed second.
+    page(2, [(120, ["2024"], None, None, "100.00", "10"), (140, ["30", "Dec"], "SHOP", "10.00", "90.00", None),
+             (160, ["02", "Jan"], "SHOP", "20.00", "70.00", None)])
+    return pages
+
+
+def test_merged_statements_take_their_own_years_and_run_in_statement_order(nationwide_config):
+    parser = NationwideParser(nationwide_config)
+    parser.set_word_layout(_merged_layout())
+    txns = parser.parse_transactions("", datetime(2025, 2, 17), datetime(2025, 2, 17))
+    rows = [(t.date.date().isoformat(), t.money_out, t.balance) for t in txns if t.description != "NATIONWIDE_PERIOD_BREAK"]
+    assert rows == [("2024-12-30", 10.0, 90.0), ("2025-01-02", 20.0, 70.0), ("2025-02-01", 5.0, 65.0)]

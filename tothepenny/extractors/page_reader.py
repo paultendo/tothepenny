@@ -344,7 +344,7 @@ def _words(chars) -> List[dict]:
                 current = {'text': character, 'x0': x0, 'x1': x1, 'top': top, 'bottom': bottom, 'size': size}
                 words.append(current)
             previous = x1
-    return _join_currency(_join_touching(words))
+    return _join_currency(_join_decimals(_join_touching(words)))
 
 
 TOUCHING = 0.5  # points: words on one line this close are one word drawn in pieces ("Barc" + "lays")
@@ -366,6 +366,55 @@ def _join_touching(words: List[dict]) -> List[dict]:
                 last['bottom'] = max(last['bottom'], word['bottom'])
                 continue
         joined.append(word)
+    return joined
+
+
+NUMERIC_PIECE = re.compile(r"^[£$€-]?[\d,]*\.?\d*$")
+ONE_AMOUNT = re.compile(r"^[£$€-]?\d[\d,]*(?:\.\d{0,2})?$")
+
+
+def _one_amount(last: dict, word: dict) -> bool:
+    """Two pieces on one line that are one amount drawn in parts ("14." and "71"; "18" and "7.63"; "9.", "5" and "3"):
+    both are numeric, they overlap or touch (after a decimal point by up to a point and a half, since the digits after
+    it are often set a little apart), and together they still read as one amount. Numbers with a real space between
+    them are never joined."""
+    a, b = last['text'], word['text']
+    if not (NUMERIC_PIECE.match(a) and NUMERIC_PIECE.match(b) and any(c.isdigit() for c in a + b)):
+        return False
+    if not ONE_AMOUNT.match(a + b):
+        return False
+    gap = word['x0'] - last['x1']
+    # A second piece that is a whole amount by itself ("7.63") joins only when the two overlap: a year or a reference
+    # merely touching an amount ("2023" then "40.00") stays apart.
+    if re.match(r"^\d[\d,]*\.\d{2}$", b) and gap > 0:
+        return False
+    return -2.5 <= gap <= (1.5 if a.endswith('.') else 0.3)
+
+
+def _join_decimals(words: List[dict]) -> List[dict]:
+    """An amount drawn in two pieces at its decimal point ("14." and "71"), the second overlapping the first by up to a
+    point or two, is one amount (Nationwide's older FlexAccount statements). Only a number ending in its point followed
+    on the same line by exactly two digits is joined, so separate words are never run together."""
+    # Lines first, by centre with a tolerance (two pieces of one amount can sit a fraction of a point apart, on either
+    # side of a rounding boundary), then neighbours along each line.
+    centre = lambda w: (w['top'] + w['bottom']) / 2
+    lines: List[List[dict]] = []
+    for word in sorted(words, key=centre):
+        height = max(word['bottom'] - word['top'], 1.0)
+        if lines and abs(centre(word) - centre(lines[-1][0])) <= height / 4:
+            lines[-1].append(word)
+        else:
+            lines.append([word])
+    joined: List[dict] = []
+    for line in lines:
+        kept: List[dict] = []
+        for word in sorted(line, key=lambda w: w['x0']):
+            if kept and _one_amount(kept[-1], word):
+                kept[-1]['text'] += word['text']
+                kept[-1]['x1'] = max(kept[-1]['x1'], word['x1'])
+                continue
+            kept.append(word)
+        joined.extend(kept)
     return joined
 
 
