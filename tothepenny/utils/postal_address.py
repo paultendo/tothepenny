@@ -109,7 +109,9 @@ def addresses_by_page(pages, holder: Optional[str]) -> List[dict]:
     pages it appears on: [{"address": ..., "pages": [1, 2, ...]}]."""
     found: List[dict] = []
     for number, page in enumerate(pages, 1):
-        address = address_from_words(getattr(page, "words", None) or page.get("words", []), holder)
+        # A page object or a plain mapping; a page with no words (a scan, a blank page) simply has no address.
+        words = page.words if hasattr(page, "words") else page.get("words", [])
+        address = address_from_words(words or [], holder)
         if not address:
             continue
         entry = next((e for e in found if e["address"] == address), None)

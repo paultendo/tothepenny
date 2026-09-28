@@ -70,3 +70,11 @@ def test_a_forename_printed_as_its_initial_still_matches_but_another_surname_doe
     assert address_from_words(words, "MRS YAFFA EXAMPLE") == "5 Test Row, TE5 5TT"
     assert address_from_words(words, "MRS YAFFA OTHER") is None
     assert address_from_words(words, "MRS ZOE EXAMPLE") is None
+
+
+def test_a_page_object_with_no_words_is_passed_over():
+    from types import SimpleNamespace
+    from tothepenny.utils.postal_address import addresses_by_page
+    block = _words([(100, 57, "MR F EXAMPLE"), (110, 57, "3 Test Lane"), (120, 57, "TL3 3TL")])
+    assert addresses_by_page([SimpleNamespace(words=[]), SimpleNamespace(words=block)], "MR F EXAMPLE") == [
+        {"address": "3 Test Lane, TL3 3TL", "pages": [2]}]
