@@ -26,6 +26,7 @@ from .exporters import ExcelExporter, generate_output_filename
 from .config import get_bank_config_loader, BankConfig
 from .utils import setup_logger, log_extraction_audit
 from .utils.spreadsheet_safety import clean_text
+from .utils.postal_address import address_from_words
 
 
 SUMMARY_BALANCE_FIELDS = {'previous_balance', 'new_balance', 'opening_balance', 'closing_balance', 'start_balance',
@@ -241,6 +242,16 @@ class ExtractionPipeline:
                     "Could not extract statement metadata",
                     processing_time=time.time() - start_time
                 )
+
+            # The holder's address, by position under their name on the first page (never from reflowed text, where a
+            # summary printed beside the address runs into it).
+            if statement.account_holder and file_path.suffix.lower() == '.pdf':
+                try:
+                    from .extractors.page_reader import read_pages
+                    pages = read_pages(file_path)
+                    statement.account_address = address_from_words(pages[0].words, statement.account_holder) if pages else None
+                except Exception as e:  # noqa: BLE001
+                    logger.debug(f"Address not read: {e}")
 
             # 2c. Parse transactions
             transactions = self._parse_transactions(text, bank_config, statement, file_path, word_layout)

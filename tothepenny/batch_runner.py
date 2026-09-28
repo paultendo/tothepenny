@@ -37,6 +37,8 @@ class BatchFileResult:
     processing_time: Optional[float] = None
     # For the coverage check across statements of one account
     account: Optional[str] = None
+    holder: Optional[str] = None
+    address: Optional[str] = None
     period_start: Optional[str] = None
     period_end: Optional[str] = None
     # Whether the period is the one the statement prints; otherwise it spans the first and last transactions, and a
@@ -133,6 +135,7 @@ def _process_file(
         stmt = result.statement
         if stmt is not None:
             row.account = ' '.join(x for x in (stmt.sort_code, stmt.account_number) if x) or None
+            row.holder, row.address = stmt.account_holder, stmt.account_address
             row.period_start = stmt.statement_start_date.date().isoformat() if stmt.statement_start_date else None
             row.period_end = stmt.statement_end_date.date().isoformat() if stmt.statement_end_date else None
             row.opening, row.closing = stmt.opening_balance, stmt.closing_balance

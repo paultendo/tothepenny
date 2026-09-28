@@ -83,11 +83,13 @@ def write_set_workbook(summary, rows, pairs, findings, path: Path) -> None:
         else:
             reconciled = 'No'
             why = result.error or (result.warnings[-1] if result.warnings else 'Did not reconcile to the bank\'s figures')
-        statements.append([result.file, bank_name(result.bank), result.account, result.period_start,
+        statements.append([result.file, bank_name(result.bank), result.account, getattr(result, 'holder', None) or '',
+                           getattr(result, 'address', None) or '', result.period_start,
                            result.period_end, result.opening, result.closing, result.transactions, reconciled, why])
     _sheet(wb, 'Statements',
-           ['Statement', 'Bank', 'Account', 'From', 'To', 'Opening', 'Closing', 'Transactions', 'Reconciled', 'Why not'],
-           statements, money_cols=(6, 7), date_cols=(4, 5), widths={1: 32, 10: 60})
+           ['Statement', 'Bank', 'Account', 'Account holder', 'Address', 'From', 'To', 'Opening', 'Closing', 'Transactions',
+            'Reconciled', 'Why not'],
+           statements, money_cols=(8, 9), date_cols=(6, 7), widths={1: 32, 4: 26, 5: 44, 12: 60})
 
     gaps = [f for f in findings if f['kind'] != 'joined']
     _sheet(wb, 'Gaps',

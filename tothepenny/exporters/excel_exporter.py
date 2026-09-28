@@ -285,6 +285,7 @@ class ExcelExporter:
             ("Bank Name", stmt.bank_name),
             ("Account Number", stmt.account_number),
             ("Account Holder", stmt.account_holder or "N/A"),
+            ("Address", stmt.account_address or "Not found on the statement"),
             ("Sort Code", stmt.sort_code or "N/A"),
             ("Currency", stmt.currency),
             ("", ""),

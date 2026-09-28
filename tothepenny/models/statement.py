@@ -22,6 +22,7 @@ class Statement:
         closing_balance: Closing balance
         currency: Currency code (e.g., 'GBP', 'USD')
         sort_code: Bank sort code (if available)
+        account_address: The holder's postal address as printed on the statement (if found)
     """
     bank_name: str
     account_number: str
@@ -32,6 +33,7 @@ class Statement:
     currency: str = "GBP"
     account_holder: Optional[str] = None
     sort_code: Optional[str] = None
+    account_address: Optional[str] = None
     pots: list[dict] = field(default_factory=list)
     metadata_start_date: Optional[datetime] = None
     metadata_end_date: Optional[datetime] = None
@@ -63,5 +65,6 @@ class Statement:
             'closing_balance': round(self.closing_balance, 2) if self.closing_balance is not None else None,
             'currency': self.currency,
             'sort_code': self.sort_code,
+            'account_address': self.account_address,
             'pots': pot_payload
         }
